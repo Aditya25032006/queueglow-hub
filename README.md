@@ -13,6 +13,8 @@ Queueglow is an independent project inspired by a desktop workflow. It is not af
 - Codex and Claude Code hook events with one-time approval controls
 - Robo questions with an optional, explicitly selected screen or window image
 
+Every island tab fits without vertical scrolling. Longer lists and Robo answers use page buttons. Hover over the Wi-Fi and Bluetooth icons at the top left, then click a tile to switch that radio on or off; the tile shows the confirmed state.
+
 The app stores local data in `%LOCALAPPDATA%\Queueglow`. Clipboard capture starts off. Robo needs your own OpenAI API key, stored with Windows encryption. It sends the selected image and prompt only when you submit a question. Queueglow has no telemetry.
 
 ## Download and run
@@ -34,7 +36,7 @@ npm run desktop
 
 To create a portable app folder, run `npm run package:win`. Output goes to `release/QueueglowHub-win32-x64`. The source checkout does not need a Python environment or a prebuilt hook executable; the coding-agent hook is `electron/agent_hook.ps1`.
 
-GUI smoke tests run with `node e2e/smoke.cjs`, `node e2e/music.cjs`, and `node e2e/agent.cjs`. They move the Windows cursor and exercise live OS features, so run them on a disposable desktop session. The music test needs an active Windows media session with artwork.
+GUI smoke tests run with `node e2e/smoke.cjs`, `node e2e/music.cjs`, `node e2e/agent.cjs`, and `node e2e/layout.cjs`. `node e2e/radios.cjs` checks radio status; set `QUEUEGLOW_TEST_RADIO_TOGGLE=1` to switch Bluetooth off and back on during the test. These tests move the Windows cursor and exercise live OS features, so run them on a disposable desktop session. The music test needs an active Windows media session with artwork.
 
 ## Current limits
 

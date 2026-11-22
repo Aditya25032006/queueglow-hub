@@ -351,9 +351,13 @@ export default function App() {
               Robo <span className="subtle">Your screen companion</span>
             </div>
             <div className="robo-answer">
-              {busy
-                ? 'Thinking…'
-                : answer || 'Ask a question, explain a concept, or refine a piece of writing.'}
+              <PagedText
+                text={
+                  busy
+                    ? 'Thinking…'
+                    : answer || 'Ask a question, explain a concept, or refine a piece of writing.'
+                }
+              />
             </div>
             <div className="chips">
               {['Explain this', 'Check spelling', 'Translate', 'Summarize'].map((v) => (
@@ -519,8 +523,8 @@ export default function App() {
                 body="Drop files here or choose Add files."
               />
             ) : (
-              <div className="item-list">
-                {state.tray.map((file) => (
+              <PagedItems items={state.tray} pageSize={2} className="item-list">
+                {(file) => (
                   <div className="list-item" key={file.id}>
                     <FolderOpen size={20} />
                     <span className="item-name">{file.name}</span>
@@ -538,8 +542,8 @@ export default function App() {
                       <X size={18} />
                     </button>
                   </div>
-                ))}
-              </div>
+                )}
+              </PagedItems>
             )}
           </section>
         )}
@@ -570,8 +574,8 @@ export default function App() {
                 body="Turn on capture, then copy text or a link."
               />
             ) : (
-              <div className="item-list">
-                {state.clips.map((clip) => (
+              <PagedItems items={state.clips} pageSize={2} className="item-list">
+                {(clip) => (
                   <button
                     className="list-item clip"
                     key={clip.id}
@@ -589,8 +593,8 @@ export default function App() {
                     </small>
                     <Copy size={16} />
                   </button>
-                ))}
-              </div>
+                )}
+              </PagedItems>
             )}
           </section>
         )}
@@ -859,6 +863,70 @@ function Empty({ icon: Icon, title, body }) {
     </div>
   );
 }
+function PagedItems({ items, pageSize, className = '', children }) {
+  const [page, setPage] = useState(0);
+  const last = Math.max(0, Math.ceil(items.length / pageSize) - 1);
+  const current = Math.min(page, last);
+  return (
+    <div className="paged-items">
+      <div className={className}>
+        {items.slice(current * pageSize, (current + 1) * pageSize).map(children)}
+      </div>
+      {last > 0 && (
+        <div className="page-controls">
+          <button
+            disabled={current === 0}
+            onClick={() => setPage(current - 1)}
+            aria-label="Previous items"
+          >
+            ‹
+          </button>
+          <span>
+            {current + 1} / {last + 1}
+          </span>
+          <button
+            disabled={current === last}
+            onClick={() => setPage(current + 1)}
+            aria-label="Next items"
+          >
+            ›
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+function PagedText({ text }) {
+  const [page, setPage] = useState(0);
+  const chunks = text.match(/[\s\S]{1,220}/g) || [''];
+  const current = Math.min(page, chunks.length - 1);
+  return (
+    <div className="paged-text">
+      <div>{chunks[current]}</div>
+      {chunks.length > 1 && (
+        <div className="page-controls">
+          <button
+            disabled={current === 0}
+            onClick={() => setPage(current - 1)}
+            aria-label="Previous answer"
+          >
+            ‹
+          </button>
+          <span>
+            {current + 1} / {chunks.length}
+          </span>
+          <button
+            disabled={current === chunks.length - 1}
+            onClick={() => setPage(current + 1)}
+            aria-label="Next answer"
+          >
+            ›
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 function MusicPage({
   state,
   activeTrack,
@@ -994,29 +1062,52 @@ function AgendaPage({
         <div className="agenda-list">
           {view === 'day' ? (
             <>
-              <h2>{selected.toDateString() === now.toDateString() ? 'Today' : day(selected)}</h2>
-              <div className="day-timeline">
-                {Array.from({ length: 11 }, (_, i) => i + 8).map((hour) => (
-                  <div className="hour-row" key={hour}>
-                    <span className="mono">{String(hour).padStart(2, '0')}:00</span>
-                    <div>
-                      {chosenEvents
-                        .filter((event) => new Date(event.starts_at).getHours() === hour)
-                        .map((event) => (
-                          <div className="timeline-event" key={event.id}>
-                            <strong>{event.title}</strong>
-                            <button
-                              aria-label={`Remove ${event.title}`}
-                              onClick={() => call(() => window.hub.agendaRemove(event.id))}
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                ))}
+              <div className="day-head">
+                <button
+                  aria-label="Previous day"
+                  onClick={() =>
+                    setSelected(
+                      new Date(selected.getFullYear(), selected.getMonth(), selected.getDate() - 1),
+                    )
+                  }
+                >
+                  ‹
+                </button>
+                <h2>{selected.toDateString() === now.toDateString() ? 'Today' : day(selected)}</h2>
+                <button
+                  aria-label="Next day"
+                  onClick={() =>
+                    setSelected(
+                      new Date(selected.getFullYear(), selected.getMonth(), selected.getDate() + 1),
+                    )
+                  }
+                >
+                  ›
+                </button>
               </div>
+              {chosenEvents.length ? (
+                <PagedItems items={chosenEvents} pageSize={2} className="agenda-events">
+                  {(event) => (
+                    <div className="timeline-event" key={event.id}>
+                      <span className="mono">
+                        {new Date(event.starts_at).toLocaleTimeString([], {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      <strong title={event.title}>{event.title}</strong>
+                      <button
+                        aria-label={`Remove ${event.title}`}
+                        onClick={() => call(() => window.hub.agendaRemove(event.id))}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+                </PagedItems>
+              ) : (
+                <p className="agenda-empty">No events today</p>
+              )}
             </>
           ) : (
             <>
@@ -1168,23 +1259,27 @@ function AgentPage({ state, call, navigate }) {
         {state.pending?.length > 0 && (
           <div className="permission">
             <strong>Decision needed</strong>
-            {state.pending.map((p) => (
-              <div key={p.id}>
-                <p>{p.summary}</p>
-                {p.detail && <pre>{p.detail}</pre>}
-                <div className="decision-row">
-                  <button onClick={() => call(() => window.hub.decide(p.id, 'deny'))}>Deny</button>
-                  <button onClick={() => call(() => window.hub.decide(p.id, 'allow'))}>
-                    Allow once
-                  </button>
+            <PagedItems items={state.pending} pageSize={1}>
+              {(p) => (
+                <div key={p.id}>
+                  <p>{p.summary}</p>
+                  {p.detail && <pre title={p.detail}>{p.detail}</pre>}
+                  <div className="decision-row">
+                    <button onClick={() => call(() => window.hub.decide(p.id, 'deny'))}>
+                      Deny
+                    </button>
+                    <button onClick={() => call(() => window.hub.decide(p.id, 'allow'))}>
+                      Allow once
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )}
+            </PagedItems>
           </div>
         )}
         {state.events.length ? (
-          <div className="event-feed">
-            {state.events.slice(0, 12).map((event) => (
+          <PagedItems items={state.events} pageSize={2} className="event-feed">
+            {(event) => (
               <div className="event" key={event.id}>
                 <span className={`event-mark ${event.kind}`} />
                 <span>
@@ -1198,8 +1293,8 @@ function AgentPage({ state, call, navigate }) {
                   })}
                 </time>
               </div>
-            ))}
-          </div>
+            )}
+          </PagedItems>
         ) : (
           <div className="agent-empty">
             Connect your coding agent to see recent activity and decisions in this space.

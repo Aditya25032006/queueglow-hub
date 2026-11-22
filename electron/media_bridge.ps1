@@ -86,6 +86,13 @@ while ($null -ne ($line = [Console]::ReadLine())) {
       $outcome = Await-WinRT ($radio.SetStateAsync($newState)) $radioAccessType
       if ($outcome.ToString() -ne 'Allowed') { throw "$target could not be changed: $outcome" }
       $lastSystemAt = [DateTime]::MinValue
+      for ($attempt = 0; $attempt -lt 12; $attempt++) {
+        $systemStatus = Read-SystemStatus
+        if ($systemStatus["${target}Enabled"] -eq $request.enabled) { break }
+        Start-Sleep -Milliseconds 250
+      }
+      if ($systemStatus["${target}Enabled"] -ne $request.enabled) { throw "$target did not reach the requested state" }
+      $lastSystemAt = [DateTime]::UtcNow
     }
     if (([DateTime]::UtcNow - $lastSystemAt).TotalSeconds -ge 10) {
       $systemStatus = Read-SystemStatus

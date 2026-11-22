@@ -59,10 +59,13 @@ export default function Connectivity({ system, open, setOpen, dismissOtherPanels
             {RADIOS.map(({ id, label, Icon }) => {
               const enabled = system?.[`${id}Enabled`];
               const available = system?.[`${id}Available`];
-              const detail =
-                id === 'wifi'
-                  ? system?.wifiSsid || (enabled ? 'Not connected' : 'Off')
-                  : system?.bluetoothDevice || (enabled ? 'No device connected' : 'Off');
+              const detail = !available
+                ? 'Unavailable'
+                : !enabled
+                  ? 'Off'
+                  : id === 'wifi'
+                    ? system?.wifiSsid || 'On · not connected'
+                    : system?.bluetoothDevice || 'On · no device';
               return (
                 <button
                   key={id}
@@ -75,7 +78,9 @@ export default function Connectivity({ system, open, setOpen, dismissOtherPanels
                   <span className={`connectivity-icon ${enabled ? 'on' : ''}`}>
                     <Icon size={20} />
                   </span>
-                  <strong>{label}</strong>
+                  <strong>
+                    {label} <span className="radio-state">{enabled ? 'On' : 'Off'}</span>
+                  </strong>
                   <small title={detail}>{busy === id ? 'Changing…' : detail}</small>
                 </button>
               );
