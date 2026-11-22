@@ -1,0 +1,14 @@
+/node_modules/
+/dist/
+/release/
+/bin/
+/replica/
+/site/
+/screenshot-*.png
+*.db
+*.db-shm
+*.db-wal
+*.log
+.env
+.env.*
+!.env.example

@@ -1,0 +1,27 @@
+{
+  "name": "queueglow-hub",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "A local Windows desktop hub for focus, files, clips, music, and coding agents",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "build": "vite build",
+    "format": "prettier --write src electron/*.cjs scripts e2e tests README.md package.json vite.config.mjs index.html",
+    "format:check": "prettier --check src electron/*.cjs scripts e2e tests README.md package.json vite.config.mjs index.html",
+    "desktop": "npm run build && electron .",
+    "test": "node --test tests/*.test.cjs",
+    "package:win": "npm run build && node scripts/package-win.cjs"
+  },
+  "dependencies": {
+    "lucide-react": "^1.77.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@electron/asar": "^4.3.2",
+    "@playwright/test": "^1.65.1",
+    "electron": "^45.4.1",
+    "prettier": "3.10.1",
+    "vite": "^8.3.8"
+  }
+}

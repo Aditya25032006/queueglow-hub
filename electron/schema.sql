@@ -1,0 +1,18 @@
+PRAGMA foreign_keys = ON;
+CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS agent_jobs(id TEXT PRIMARY KEY, provider TEXT NOT NULL CHECK(provider IN ('codex','claude','demo')), title TEXT NOT NULL DEFAULT '', state TEXT NOT NULL CHECK(state IN ('idle','working','attention','done','error')), started_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS agent_events(id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES agent_jobs(id) ON DELETE CASCADE, provider TEXT NOT NULL, kind TEXT NOT NULL, summary TEXT NOT NULL, occurred_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_agent_events_job_time ON agent_events(job_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_events_time ON agent_events(occurred_at DESC);
+CREATE TABLE IF NOT EXISTS clips(id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('text','link')), preview TEXT NOT NULL, content TEXT NOT NULL, content_hash TEXT NOT NULL UNIQUE, captured_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_clips_time ON clips(captured_at DESC);
+CREATE TABLE IF NOT EXISTS tray_items(id TEXT PRIMARY KEY, name TEXT NOT NULL, stored_name TEXT NOT NULL, byte_size INTEGER NOT NULL CHECK(byte_size >= 0), added_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_tray_time ON tray_items(added_at DESC);
+CREATE TABLE IF NOT EXISTS notes(id TEXT PRIMARY KEY, body TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS agenda_events(id TEXT PRIMARY KEY, title TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, created_at TEXT NOT NULL, CHECK(ends_at > starts_at));
+CREATE INDEX IF NOT EXISTS idx_agenda_start ON agenda_events(starts_at);
+CREATE TABLE IF NOT EXISTS focus_sessions(id TEXT PRIMARY KEY, mode_id TEXT NOT NULL, planned_seconds INTEGER NOT NULL CHECK(planned_seconds BETWEEN 60 AND 86400), deadline_at TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('running','paused','done')), started_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS mode_profiles(id TEXT PRIMARY KEY, name TEXT NOT NULL, duration_seconds INTEGER NOT NULL CHECK(duration_seconds BETWEEN 60 AND 86400), block_sites INTEGER NOT NULL DEFAULT 0, quiet_contacts INTEGER NOT NULL DEFAULT 0, keep_music INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS app_preferences(app_id TEXT PRIMARY KEY, visible INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS robo_messages(id TEXT PRIMARY KEY, prompt TEXT NOT NULL, answer TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('done','error')), created_at TEXT NOT NULL);
