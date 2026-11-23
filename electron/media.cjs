@@ -2,6 +2,7 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 const readline = require('node:readline');
+const { LyricsClient } = require('./lyrics.cjs');
 
 class MediaBridge {
   constructor(resourcePath, onChange) {
@@ -12,6 +13,9 @@ class MediaBridge {
     this.media = null;
     this.volume = null;
     this.system = null;
+    this.lyrics = new LyricsClient();
+    this.lyricsEnabled = true;
+    this.lyricsTrackKey = '';
   }
   start() {
     if (process.platform !== 'win32') return;
@@ -66,6 +70,7 @@ class MediaBridge {
     });
   }
   mergeArtwork(next) {
+    if (next.media) next.media.sampledAt = Date.now();
     if (
       next.media &&
       this.media &&
@@ -76,7 +81,34 @@ class MediaBridge {
     ) {
       next.media.artwork = this.media.artwork || null;
     }
+    if (next.media && this.media && this.trackKey(next.media) === this.trackKey(this.media)) {
+      next.media.lyrics = this.media.lyrics || null;
+    }
     return next;
+  }
+  trackKey(track) {
+    return track ? `${track.source || ''}\0${track.title || ''}\0${track.artist || ''}` : '';
+  }
+  setLyricsEnabled(enabled) {
+    this.lyricsEnabled = !!enabled;
+    this.lyricsTrackKey = '';
+    if (this.media) {
+      this.media.lyrics = null;
+      this.onChange();
+      if (this.lyricsEnabled) this.lookupLyrics();
+    }
+  }
+  lookupLyrics() {
+    if (!this.lyricsEnabled || !this.media) return;
+    const key = this.trackKey(this.media);
+    if (!key || key === this.lyricsTrackKey) return;
+    this.lyricsTrackKey = key;
+    this.lyrics.lookup(this.media).then((lyrics) => {
+      if (this.lyricsEnabled && this.media && this.trackKey(this.media) === key) {
+        this.media.lyrics = lyrics;
+        this.onChange();
+      }
+    });
   }
   async poll() {
     try {
@@ -89,6 +121,7 @@ class MediaBridge {
         this.volume = next.volume;
         this.system = next.system;
         this.onChange(next);
+        this.lookupLyrics();
       }
     } catch {
       /* Local player still works. */
@@ -100,6 +133,7 @@ class MediaBridge {
     this.volume = next.volume;
     this.system = next.system;
     this.onChange(next);
+    this.lookupLyrics();
     return next;
   }
   stop() {

@@ -1,8 +1,29 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const invoke = (name, ...args) => ipcRenderer.invoke(name, ...args);
-contextBridge.exposeInMainWorld('hub', {
+function subscribe(name, callback) {
+  const handler = (_event, payload) => callback(payload);
+  ipcRenderer.on(name, handler);
+  return () => ipcRenderer.removeListener(name, handler);
+}
+
+const settings = {
+  state: () => invoke('settings:state'),
+  set: (key, value) => invoke('settings:set', key, value),
+  shortcut: (index, shortcut) => invoke('settings:shortcut', index, shortcut),
+  appVisible: (id, visible) => invoke('settings:appVisible', id, visible),
+  hook: (provider, action) => invoke('settings:hook', provider, action),
+  login: (enabled) => invoke('settings:login', enabled),
+  roboKey: (key) => invoke('settings:roboKey', key),
+  roboDisconnect: () => invoke('settings:roboDisconnect'),
+  onNavigate: (callback) => subscribe('settings:navigate', callback),
+  onActivity: (callback) => subscribe('settings:activity', callback),
+};
+
+const hub = {
   state: () => invoke('state'),
+  openSettings: (section) => invoke('openSettings', section),
+  openShortcut: (index) => invoke('openShortcut', index),
   fold: () => invoke('fold'),
   expand: () => invoke('expand'),
   quit: () => invoke('quit'),
@@ -17,6 +38,7 @@ contextBridge.exposeInMainWorld('hub', {
   trayRemove: (id) => invoke('trayRemove', id),
   trayOpen: (id) => invoke('trayOpen', id),
   noteSave: (body) => invoke('noteSave', body),
+  noteFlush: (body) => ipcRenderer.sendSync('noteFlush', body),
   agendaAdd: (title, start, end) => invoke('agendaAdd', title, start, end),
   agendaRemove: (id) => invoke('agendaRemove', id),
   musicOpen: () => invoke('musicOpen'),
@@ -30,19 +52,13 @@ contextBridge.exposeInMainWorld('hub', {
   roboAsk: (prompt, captureTarget) => invoke('roboAsk', prompt, captureTarget),
   roboTargets: () => invoke('roboTargets'),
   roboKey: (key) => invoke('roboKey', key),
-  onUpdate: (callback) => {
-    const handler = (_event, payload) => callback(payload);
-    ipcRenderer.on('update', handler);
-    return () => ipcRenderer.removeListener('update', handler);
-  },
-  onMotion: (callback) => {
-    const handler = (_event, payload) => callback(payload);
-    ipcRenderer.on('motion', handler);
-    return () => ipcRenderer.removeListener('motion', handler);
-  },
-  onPresence: (callback) => {
-    const handler = (_event, payload) => callback(payload);
-    ipcRenderer.on('presence', handler);
-    return () => ipcRenderer.removeListener('presence', handler);
-  },
-});
+  onUpdate: (callback) => subscribe('update', callback),
+  onMotion: (callback) => subscribe('motion', callback),
+  onPresence: (callback) => subscribe('presence', callback),
+};
+
+if (process.argv.includes('--queueglow-settings')) {
+  contextBridge.exposeInMainWorld('queueglowSettings', settings);
+} else {
+  contextBridge.exposeInMainWorld('hub', hub);
+}

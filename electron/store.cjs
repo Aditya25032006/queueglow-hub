@@ -27,6 +27,29 @@ const SETTING_DEFAULTS = {
   notifications: true,
   sound: true,
   reduceMotion: false,
+  notifyApprovals: true,
+  notifyCompletion: false,
+  notifyErrors: true,
+  notificationPresentation: 'summary',
+  focusGuard: false,
+  islandSize: 'standard',
+  islandSkin: 'obsidian',
+  islandExpansion: 'hover',
+  restingIndicator: 'eyes',
+  roboAppearance: 'cyan',
+  roboScreenCapture: true,
+  roboProvider: 'auto',
+  lyricsEnabled: false,
+  customShortcuts: [null, null, null, null],
+};
+const CHOICES = {
+  notificationPresentation: ['summary', 'private'],
+  islandSize: ['compact', 'standard', 'large'],
+  islandSkin: ['obsidian', 'slate', 'violet'],
+  islandExpansion: ['hover', 'click'],
+  restingIndicator: ['eyes', 'dot', 'none'],
+  roboAppearance: ['cyan', 'violet', 'mint'],
+  roboProvider: ['auto', 'codex', 'claude', 'openai'],
 };
 const MAX_TRAY_FILE = 25 * 1024 * 1024;
 
@@ -47,9 +70,24 @@ class HubStore {
     this.root = root;
     this.trayRoot = path.join(root, 'tray');
     fs.mkdirSync(this.trayRoot, { recursive: true });
-    this.db = new DatabaseSync(path.join(root, 'hub.db'));
+    this.db = new DatabaseSync(path.join(root, 'hub.db'), { timeout: 2000 });
     this.db.exec('PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;');
     this.db.exec(fs.readFileSync(schemaPath, 'utf8'));
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      if (
+        !this.db
+          .prepare('PRAGMA table_info(agent_events)')
+          .all()
+          .some(({ name }) => name === 'detail')
+      ) {
+        this.db.exec("ALTER TABLE agent_events ADD COLUMN detail TEXT NOT NULL DEFAULT ''");
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
     const insertMode = this.db.prepare(
       'INSERT OR IGNORE INTO mode_profiles(id,name,duration_seconds,updated_at) VALUES(?,?,?,?)',
     );
@@ -63,20 +101,60 @@ class HubStore {
   }
 
   setting(key) {
-    if (!(key in SETTING_DEFAULTS)) throw new Error('Unknown setting');
+    if (!Object.hasOwn(SETTING_DEFAULTS, key)) throw new Error('Unknown setting');
     const row = this.db.prepare('SELECT value_json FROM settings WHERE key=?').get(key);
     return row ? JSON.parse(row.value_json) : SETTING_DEFAULTS[key];
   }
 
-  setSetting(key, value) {
-    if (!(key in SETTING_DEFAULTS) || typeof value !== 'boolean')
-      throw new Error('Invalid setting');
+  writeSetting(key, value) {
     this.db
       .prepare(
         'INSERT INTO settings(key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at',
       )
       .run(key, JSON.stringify(value), now());
     return value;
+  }
+
+  setSetting(key, value) {
+    if (!Object.hasOwn(SETTING_DEFAULTS, key) || key === 'customShortcuts')
+      throw new Error('Invalid setting');
+    const valid = Object.hasOwn(CHOICES, key)
+      ? CHOICES[key].includes(value)
+      : typeof value === 'boolean';
+    if (!valid) throw new Error('Invalid setting');
+    return this.writeSetting(key, value);
+  }
+
+  setShortcut(index, shortcut) {
+    if (!Number.isInteger(index) || index < 0 || index >= SETTING_DEFAULTS.customShortcuts.length)
+      throw new Error('Invalid shortcut slot');
+    let entry = null;
+    if (shortcut !== null) {
+      const { label, url } = shortcut || {};
+      if (typeof label !== 'string' || !label.trim() || label.trim().length > 32)
+        throw new Error('Enter a shortcut label of 1 to 32 characters');
+      let target;
+      if (typeof url === 'string' && url.length <= 2048) {
+        try {
+          target = new URL(url.trim());
+        } catch {}
+      }
+      if (
+        !target ||
+        target.href.length > 2048 ||
+        target.protocol !== 'https:' ||
+        target.username ||
+        target.password ||
+        !/^https:\/\/[^/?#\\\s]/i.test(url.trim()) ||
+        /[\\\x00-\x20]/.test(url.trim())
+      )
+        throw new Error('Enter a complete HTTPS address without sign-in credentials');
+      entry = { label: label.trim(), url: target.href };
+    }
+    const slots = [...this.setting('customShortcuts')];
+    slots[index] = entry;
+    this.writeSetting('customShortcuts', slots);
+    return entry;
   }
 
   addAgentEvent(raw) {
@@ -96,6 +174,7 @@ class HubStore {
       ? raw.kind
       : 'system';
     const summary = text(raw.summary, 180) || kind;
+    const detail = kind === 'done' && typeof raw.detail === 'string' ? text(raw.detail, 4000) : '';
     const occurredAt = /^\d{4}-\d\d-\d\dT/.test(String(raw.happened_at))
       ? String(raw.happened_at)
       : now();
@@ -115,15 +194,16 @@ class HubStore {
       .run(jobId, raw.provider, '', state, occurredAt, occurredAt);
     this.db
       .prepare(
-        'INSERT OR IGNORE INTO agent_events(id,job_id,provider,kind,summary,occurred_at) VALUES(?,?,?,?,?,?)',
+        'INSERT OR IGNORE INTO agent_events(id,job_id,provider,kind,summary,occurred_at,detail) VALUES(?,?,?,?,?,?,?)',
       )
-      .run(eventId, jobId, raw.provider, kind, summary, occurredAt);
+      .run(eventId, jobId, raw.provider, kind, summary, occurredAt, detail);
     return {
       id: eventId,
       job_id: jobId,
       provider: raw.provider,
       kind,
       summary,
+      detail,
       occurred_at: occurredAt,
     };
   }
@@ -193,13 +273,14 @@ class HubStore {
   }
 
   saveNote(body) {
-    const clean = text(body, 30000);
+    if (typeof body !== 'string') throw new Error('Invalid note');
+    if (body.length > 30000) throw new Error('Notes can contain up to 30,000 characters');
     this.db
       .prepare(
         'INSERT INTO notes(id,body,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at',
       )
-      .run('main', clean, now());
-    return clean;
+      .run('main', body, now());
+    return body;
   }
 
   addAgendaEvent(title, start, end) {
@@ -241,6 +322,12 @@ class HubStore {
     this.db
       .prepare("UPDATE focus_sessions SET state='done',updated_at=? WHERE state='running'")
       .run(now());
+  }
+
+  hasActiveFocus() {
+    return !!this.db
+      .prepare("SELECT 1 FROM focus_sessions WHERE state='running' AND deadline_at>? LIMIT 1")
+      .get(now());
   }
 
   setAppVisible(appId, visible) {

@@ -1,21 +1,22 @@
 # Queueglow Hub
 
-A small, always-on-top Windows desktop companion that folds to a pair of eyes at the top of the screen. Hover over the eyes to open it. Queueglow stays out of the taskbar and has a tray menu for opening or quitting it.
+A compact, always-on-top Windows desktop companion that folds to a pair of eyes at the top of the screen. Hover over the eyes to open it, or choose click opening in Settings. Queueglow stays out of the taskbar and has a tray menu for opening or quitting it.
 
 Queueglow is an independent project inspired by a desktop workflow. It is not affiliated with TwoCode. The repository contains original UI code and no reference screenshots or music artwork.
 
 ## Features
 
 - Home clock, current track, focus timer, and coding-agent activity
-- Windows media artwork and playback controls; local audio fallback
+- Windows media artwork and playback controls; local audio fallback and optional synced lyrics
 - Wi-Fi and Bluetooth on/off controls, network and device links, volume, brightness, and battery status
 - Local notes, agenda, file tray, and optional clipboard history
 - Codex and Claude Code hook events with one-time approval controls
-- Robo questions with an optional, explicitly selected screen or window image
+- Robo questions through the installed Codex or Claude Code CLI, with an optional OpenAI API key. Explicit screen attachments are supported by Codex and OpenAI.
+- A separate Settings window for providers, shortcuts, notifications, island appearance, and startup
 
-Every island tab fits without vertical scrolling. Longer lists and Robo answers use page buttons. Hover over the Wi-Fi and Bluetooth icons at the top left, then click a tile to switch that radio on or off; the tile shows the confirmed state.
+Every island tab fits without vertical scrolling. Longer lists and Robo answers use page buttons. Click the Wi-Fi and Bluetooth icons at the top left, then click a tile to switch that radio on or off; the tile shows the confirmed state.
 
-The app stores local data in `%LOCALAPPDATA%\Queueglow`. Clipboard capture starts off. Robo needs your own OpenAI API key, stored with Windows encryption. It sends the selected image and prompt only when you submit a question. Queueglow has no telemetry.
+The app stores local data in `%LOCALAPPDATA%\Queueglow`. Clipboard capture and online lyrics start off. When you enable lyrics in Island settings, Queueglow sends the current track title and artist to [LRCLIB](https://lrclib.net/docs) and caches the result for the session. Robo sends a question to your selected provider only when you submit it. If you explicitly attach a screen or window, that image goes to the provider with the question. An optional OpenAI key is stored with Windows encryption. Queueglow has no telemetry.
 
 ## Download and run
 
@@ -36,11 +37,11 @@ npm run desktop
 
 To create a portable app folder, run `npm run package:win`. Output goes to `release/QueueglowHub-win32-x64`. The source checkout does not need a Python environment or a prebuilt hook executable; the coding-agent hook is `electron/agent_hook.ps1`.
 
-GUI smoke tests run with `node e2e/smoke.cjs`, `node e2e/music.cjs`, `node e2e/agent.cjs`, and `node e2e/layout.cjs`. `node e2e/radios.cjs` checks radio status; set `QUEUEGLOW_TEST_RADIO_TOGGLE=1` to switch Bluetooth off and back on during the test. These tests move the Windows cursor and exercise live OS features, so run them on a disposable desktop session. The music test needs an active Windows media session with artwork.
+GUI smoke tests run with `node e2e/smoke.cjs`, `node e2e/music.cjs`, `node e2e/agent.cjs`, `node e2e/settings.cjs`, and `node e2e/layout.cjs`. `node e2e/robo.cjs` submits one short question through an installed, signed-in Codex CLI. `node e2e/radios.cjs` checks radio status; set `QUEUEGLOW_TEST_RADIO_TOGGLE=1` to switch Bluetooth off and back on during the test. These tests move the Windows cursor and exercise live OS features, so run them on a disposable desktop session. The music test needs an active Windows media session with artwork.
 
 ## Current limits
 
-This Electron preview uses a single renderer window, but it is still much heavier than a native Windows utility. On the test PC, its Electron processes used about 520 MB of working set during a full UI smoke test. `QUEUEGLOW_SOFTWARE_RENDER=1` reduced that to about 450 MB in the same test, but may make animation less smooth. Gmail, Google Calendar, microphone input, and enforced focus blocking are not implemented.
+This Electron build uses one island renderer and opens the Settings renderer only when requested. It remains heavier than a native Windows utility: a full island smoke test measured about 507 MB of combined process working set and 304 MB of private bytes on the test PC. `QUEUEGLOW_SOFTWARE_RENDER=1` can lower GPU memory but may make animation less smooth. Gmail, Google Calendar, microphone input, and enforced app or site blocking are not implemented. Robo image attachments are implemented but have not completed a live provider test.
 
 ## Contributing
 

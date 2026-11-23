@@ -101,12 +101,19 @@ while ($null -ne ($line = [Console]::ReadLine())) {
     $result.system = $systemStatus
     try { $result.volume = [Math]::Round([VolumeControl]::Read() * 100) } catch { }
     if ($null -ne $session) {
-      if ($request.action -eq 'playPause') { $null = Await-WinRT ($session.TryTogglePlayPauseAsync()) ([bool]) }
-      elseif ($request.action -eq 'next') { $null = Await-WinRT ($session.TrySkipNextAsync()) ([bool]) }
-      elseif ($request.action -eq 'previous') { $null = Await-WinRT ($session.TrySkipPreviousAsync()) ([bool]) }
+      $accepted = $true
+      if ($request.action -eq 'playPause') { $accepted = Await-WinRT ($session.TryTogglePlayPauseAsync()) ([bool]) }
+      elseif ($request.action -eq 'next') { $accepted = Await-WinRT ($session.TrySkipNextAsync()) ([bool]) }
+      elseif ($request.action -eq 'previous') { $accepted = Await-WinRT ($session.TrySkipPreviousAsync()) ([bool]) }
       elseif ($request.action -eq 'seek') {
         $seconds = [Math]::Max(0, [Math]::Min(86400, [double]$request.seconds))
-        $null = Await-WinRT ($session.TryChangePlaybackPositionAsync([long]($seconds * 10000000))) ([bool])
+        $accepted = Await-WinRT ($session.TryChangePlaybackPositionAsync([long]($seconds * 10000000))) ([bool])
+      }
+      if (!$accepted) { throw 'This player rejected the media control' }
+      if ($request.action -in @('playPause', 'next', 'previous')) {
+        Start-Sleep -Milliseconds 180
+        $freshSession = $manager.GetCurrentSession()
+        if ($freshSession) { $session = $freshSession }
       }
       $props = Await-WinRT ($session.TryGetMediaPropertiesAsync()) $propertiesType
       $timeline = $session.GetTimelineProperties()

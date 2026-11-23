@@ -26,7 +26,6 @@ import {
   FolderOpen,
   Send,
   Maximize2,
-  Minimize2,
   Settings2,
   LayoutGrid,
   Check,
@@ -34,7 +33,6 @@ import {
   Link,
   Clipboard,
   Bell,
-  KeyRound,
   ExternalLink,
   Wifi,
   Bluetooth,
@@ -94,6 +92,7 @@ const initial = {
   note: '',
   audio: [],
   systemMedia: null,
+  roboCapabilities: null,
   volume: null,
   system: null,
   focus: null,
@@ -121,7 +120,6 @@ export default function App() {
   const [prompt, setPrompt] = useState(''),
     [answer, setAnswer] = useState(''),
     [busy, setBusy] = useState(false),
-    [apiKey, setApiKey] = useState(''),
     [captureTarget, setCaptureTarget] = useState('none'),
     [roboTargets, setRoboTargets] = useState([]);
   const [track, setTrack] = useState(0),
@@ -129,15 +127,54 @@ export default function App() {
     [progress, setProgress] = useState(0);
   const audio = useRef(null);
   const foldTimer = useRef(null);
+  const noteReady = useRef(false);
+  const noteDirty = useRef(false);
+  const noteDraft = useRef('');
+  const noteSaveChain = useRef(Promise.resolve());
+  const noteSaveTimer = useRef(null);
+  const saveNote = (value) => {
+    noteSaveChain.current = noteSaveChain.current
+      .catch(() => {})
+      .then(() => window.hub.noteSave(value));
+    return noteSaveChain.current.then(() => {
+      if (noteDraft.current === value) noteDirty.current = false;
+    });
+  };
+  const flushNote = () => {
+    if (noteSaveTimer.current) clearTimeout(noteSaveTimer.current);
+    noteSaveTimer.current = null;
+    if (noteDirty.current) return saveNote(noteDraft.current);
+    return Promise.resolve();
+  };
+  const scheduleNoteSave = () => {
+    if (noteSaveTimer.current) clearTimeout(noteSaveTimer.current);
+    noteSaveTimer.current = setTimeout(() => {
+      noteSaveTimer.current = null;
+      flushNote().catch((error) => setError(error.message));
+    }, 300);
+  };
   useEffect(() => {
     window.hub.state().then((s) => {
       setState(s);
       setNote(s.note || '');
+      noteDraft.current = s.note || '';
+      noteReady.current = true;
     });
     return window.hub.onUpdate((s) => {
       setState(s);
-      if (document.activeElement?.tagName !== 'TEXTAREA') setNote(s.note || '');
+      if (!noteDirty.current && document.activeElement?.tagName !== 'TEXTAREA') {
+        setNote(s.note || '');
+        noteDraft.current = s.note || '';
+      }
     });
+  }, []);
+  useEffect(() => {
+    const flush = () => {
+      if (noteSaveTimer.current) clearTimeout(noteSaveTimer.current);
+      if (noteDirty.current) window.hub.noteFlush(noteDraft.current);
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
   }, []);
   useEffect(
     () => window.hub.onMotion((value) => setState((previous) => ({ ...previous, ...value }))),
@@ -174,12 +211,17 @@ export default function App() {
       setBrightnessDraft(state.system.brightnessPercent);
   }, [state.system?.brightnessPercent]);
   useEffect(() => {
-    if (page === 'robo')
+    if (
+      page === 'robo' &&
+      state.roboCapabilities?.screenAttachments &&
+      state.settings?.roboScreenCapture !== false
+    )
       window.hub
         .roboTargets()
         .then(setRoboTargets)
         .catch(() => setRoboTargets([]));
-  }, [page]);
+    else setRoboTargets([]);
+  }, [page, state.roboCapabilities?.screenAttachments, state.settings?.roboScreenCapture]);
   useEffect(() => {
     if (page !== 'music' || !audio.current) return;
     if (playing) audio.current.play().catch(() => setPlaying(false));
@@ -203,10 +245,16 @@ export default function App() {
     }
   };
   const navigate = (id) => {
+    if (page === 'note' && id !== 'note' && noteDirty.current)
+      flushNote().catch((error) => setError(error.message));
     setPage(id);
     setMenu(false);
     setError('');
     setSuccess('');
+  };
+  const openSettings = (section = 'home') => {
+    setMenu(false);
+    call(() => window.hub.openSettings(section));
   };
   const visible = state.apps.filter((app) => app.visible).map((app) => app.id);
   const cancelFold = () => {
@@ -220,16 +268,20 @@ export default function App() {
 
   return (
     <div
-      className={`shell theme-${page} motion-${state.folded ? 'folded' : state.motion || 'idle'}`}
+      className={`shell theme-${page} skin-${state.settings?.islandSkin || 'obsidian'} indicator-${state.settings?.restingIndicator || 'eyes'} robo-${state.settings?.roboAppearance || 'cyan'} motion-${state.folded ? 'folded' : state.motion || 'idle'}`}
       onMouseEnter={cancelFold}
       onMouseLeave={scheduleFold}
     >
-      <div className="island-notch">
+      <button
+        className="island-notch"
+        aria-label="Open Queueglow"
+        onClick={() => state.folded && call(() => window.hub.expand())}
+      >
         <div className="eyes">
           <span />
           <span />
         </div>
-      </div>
+      </button>
       <header className="topbar">
         <div className="header-left">
           <Connectivity
@@ -301,7 +353,7 @@ export default function App() {
               <Pencil size={19} />
               Customize
             </button>
-            <button onClick={() => navigate('settings')}>
+            <button onClick={() => openSettings()}>
               <Settings2 size={19} />
               Settings
             </button>
@@ -344,11 +396,16 @@ export default function App() {
             }}
           />
         )}
-        {page === 'codex' && <AgentPage state={state} call={call} navigate={navigate} />}
+        {page === 'codex' && <AgentPage state={state} call={call} openSettings={openSettings} />}
         {page === 'robo' && (
           <section className="robo-page">
             <div className="page-title">
-              Robo <span className="subtle">Your screen companion</span>
+              Robo{' '}
+              <span className="subtle">
+                {state.roboCapabilities?.provider
+                  ? `Using ${state.roboCapabilities.provider}`
+                  : 'Connect an AI provider in Settings'}
+              </span>
             </div>
             <div className="robo-answer">
               <PagedText
@@ -365,19 +422,22 @@ export default function App() {
                   {v}
                 </button>
               ))}
-              <select
-                aria-label="Image to include"
-                value={captureTarget}
-                onChange={(e) => setCaptureTarget(e.target.value)}
-              >
-                <option value="none">No image</option>
-                <option value="screen">Entire screen</option>
-                {roboTargets.map((target) => (
-                  <option key={target.id} value={target.id}>
-                    {target.name}
-                  </option>
-                ))}
-              </select>
+              {state.roboCapabilities?.screenAttachments &&
+                state.settings?.roboScreenCapture !== false && (
+                  <select
+                    aria-label="Image to include"
+                    value={captureTarget}
+                    onChange={(e) => setCaptureTarget(e.target.value)}
+                  >
+                    <option value="none">No image</option>
+                    <option value="screen">Entire screen</option>
+                    {roboTargets.map((target) => (
+                      <option key={target.id} value={target.id}>
+                        {target.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
             </div>
             <form
               className="composer"
@@ -385,7 +445,15 @@ export default function App() {
                 e.preventDefault();
                 setBusy(true);
                 call(async () => {
-                  setAnswer(await window.hub.roboAsk(prompt, captureTarget));
+                  setAnswer(
+                    await window.hub.roboAsk(
+                      prompt,
+                      state.roboCapabilities?.screenAttachments &&
+                        state.settings?.roboScreenCapture !== false
+                        ? captureTarget
+                        : 'none',
+                    ),
+                  );
                   setPrompt('');
                   setCaptureTarget('none');
                 }, null).finally(() => setBusy(false));
@@ -405,6 +473,7 @@ export default function App() {
         )}
         {page === 'music' && (
           <MusicPage
+            now={now}
             state={state}
             activeTrack={activeTrack}
             audio={audio}
@@ -419,39 +488,48 @@ export default function App() {
         )}
         {page === 'focus' && (
           <section className="focus-page">
-            <div className="eyebrow">MAKE SPACE FOR WHAT MATTERS</div>
-            <h1>Focus</h1>
-            <div className="focus-time mono">{fmt(remaining)}</div>
-            <p>
-              {state.focus
-                ? `Until ${clock(new Date(state.focus.deadline_at))}`
-                : `Ready when you are · ends at ${clock(new Date(now.getTime() + duration * 60000))}`}
-            </p>
-            <div className="duration-row">
-              {[15, 25, 45, 60].map((value) => (
-                <button
-                  className={duration === value ? 'selected' : ''}
-                  key={value}
-                  onClick={() => setDuration(value)}
-                  disabled={!!state.focus}
-                >
-                  {value} min
-                </button>
+            <div className="focus-main">
+              <div>
+                <div className="focus-time mono">{fmt(remaining)}</div>
+                <p>
+                  {state.focus
+                    ? `Done at ${clock(new Date(state.focus.deadline_at))}`
+                    : `Done at ${clock(new Date(now.getTime() + duration * 60000))}`}
+                </p>
+              </div>
+              <button
+                className="primary-button"
+                disabled={!state.focus && duration === 0}
+                onClick={() =>
+                  call(() =>
+                    state.focus
+                      ? window.hub.focusStop()
+                      : window.hub.focusStart(selectedMode, duration * 60),
+                  )
+                }
+              >
+                {state.focus ? 'End focus' : 'Start focus'}
+              </button>
+            </div>
+            <label className="sr-only" htmlFor="focus-duration">
+              Focus duration in minutes
+            </label>
+            <input
+              id="focus-duration"
+              className="focus-ruler"
+              type="range"
+              min="0"
+              max="60"
+              step="5"
+              value={duration}
+              disabled={!!state.focus}
+              onChange={(event) => setDuration(Number(event.target.value))}
+            />
+            <div className="focus-ruler-labels mono" aria-hidden="true">
+              {[0, 10, 20, 30, 40, 50, 60].map((minute) => (
+                <span key={minute}>{minute}</span>
               ))}
             </div>
-            <button
-              className="primary-button"
-              onClick={() =>
-                call(() =>
-                  state.focus
-                    ? window.hub.focusStop()
-                    : window.hub.focusStart(selectedMode, duration * 60),
-                )
-              }
-            >
-              {state.focus ? 'End focus' : 'Start focus'}{' '}
-              {state.focus ? <X size={18} /> : <Play size={18} />}
-            </button>
           </section>
         )}
         {page === 'modes' && (
@@ -600,21 +678,62 @@ export default function App() {
         )}
         {page === 'note' && (
           <section className="note-page">
-            <div className="page-title">
-              Note <span className="subtle">A space for quick thoughts</span>
+            <div className="note-editor">
+              <label htmlFor="quick-note" className="eyebrow">
+                NOTE
+              </label>
+              <textarea
+                id="quick-note"
+                aria-label="Your note"
+                value={note}
+                disabled={!noteReady.current}
+                onChange={(event) => {
+                  if (event.target.value.length > 30000) {
+                    setError('The note can hold up to 30,000 characters.');
+                    return;
+                  }
+                  noteDirty.current = true;
+                  noteDraft.current = event.target.value;
+                  setNote(event.target.value);
+                  scheduleNoteSave();
+                }}
+                onBlur={() => {
+                  if (noteDirty.current) flushNote().catch((error) => setError(error.message));
+                }}
+                placeholder="Click to type"
+              />
             </div>
-            <textarea
-              aria-label="Your note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Write anything here…"
-            />
-            <button
-              className="primary-button"
-              onClick={() => call(() => window.hub.noteSave(note), 'Saved locally')}
-            >
-              <Check size={18} /> Save note
-            </button>
+            <div className="note-preview">
+              {note.split('\n').some((line) => /^\[[ xX]\]/.test(line)) ? (
+                note.split('\n').map((line, index) => {
+                  const match = /^\[([ xX])\]\s?(.*)$/.exec(line);
+                  return match ? (
+                    <button
+                      key={index}
+                      className="note-check"
+                      aria-label={`${match[1].toLowerCase() === 'x' ? 'Uncheck' : 'Check'} ${match[2]}`}
+                      onClick={() => {
+                        const lines = note.split('\n');
+                        lines[index] =
+                          `[${match[1].toLowerCase() === 'x' ? ' ' : 'x'}] ${match[2]}`;
+                        const next = lines.join('\n');
+                        noteDirty.current = true;
+                        noteDraft.current = next;
+                        setNote(next);
+                        saveNote(next).catch((error) => setError(error.message));
+                      }}
+                    >
+                      <span>{match[1].toLowerCase() === 'x' ? '✓' : ''}</span>
+                      {match[2]}
+                    </button>
+                  ) : (
+                    <p key={index}>{line}</p>
+                  );
+                })
+              ) : (
+                <p>Start a line with [ ] to add a check item. Your note saves as you type.</p>
+              )}
+            </div>
           </section>
         )}
         {page === 'agenda' && (
@@ -644,17 +763,48 @@ export default function App() {
         {page === 'all' && (
           <section className="all-page">
             <div className="page-title">All apps</div>
-            <div className="all-grid">
-              {Object.keys(NAMES).map((id) => {
-                const Icon = ICONS[id];
+            <PagedItems
+              className="all-grid"
+              pageSize={12}
+              items={[
+                ...Object.keys(NAMES).map((id) => ({ kind: 'built-in', id })),
+                { kind: 'settings' },
+                ...(state.settings?.customShortcuts || [])
+                  .map((shortcut, index) => ({ kind: 'shortcut', shortcut, index }))
+                  .filter((item) => item.shortcut),
+              ]}
+            >
+              {(item) => {
+                const Icon =
+                  item.kind === 'built-in'
+                    ? ICONS[item.id]
+                    : item.kind === 'settings'
+                      ? Settings2
+                      : ExternalLink;
+                const name =
+                  item.kind === 'built-in'
+                    ? NAMES[item.id]
+                    : item.kind === 'settings'
+                      ? 'Settings'
+                      : item.shortcut.label;
                 return (
-                  <button key={id} onClick={() => navigate(id)}>
+                  <button
+                    key={`${item.kind}-${item.id || item.index || ''}`}
+                    onClick={() =>
+                      item.kind === 'built-in'
+                        ? navigate(item.id)
+                        : item.kind === 'settings'
+                          ? openSettings()
+                          : call(() => window.hub.openShortcut(item.index))
+                    }
+                    title={name}
+                  >
                     <Icon size={26} />
-                    {NAMES[id]}
+                    {name}
                   </button>
                 );
-              })}
-            </div>
+              }}
+            </PagedItems>
           </section>
         )}
         {page === 'customize' && (
@@ -678,77 +828,6 @@ export default function App() {
                   </label>
                 );
               })}
-            </div>
-          </section>
-        )}
-        {page === 'settings' && (
-          <section className="settings-page">
-            <div className="page-title">Settings</div>
-            <div className="settings-grid">
-              <div>
-                <h2>Local controls</h2>
-                {['notifications', 'sound', 'reduceMotion'].map((key) => (
-                  <label className="setting-line" key={key}>
-                    {key === 'reduceMotion' ? 'Reduce motion' : key[0].toUpperCase() + key.slice(1)}
-                    <input
-                      type="checkbox"
-                      checked={!!state.settings[key]}
-                      onChange={(e) => call(() => window.hub.setting(key, e.target.checked))}
-                    />
-                  </label>
-                ))}
-                <button className="soft-button" onClick={() => call(() => window.hub.fold())}>
-                  <Minimize2 size={16} /> Fold in
-                </button>
-              </div>
-              <div>
-                <h2>Coding agents</h2>
-                {['codex', 'claude'].map((provider) => (
-                  <div className="agent-connect" key={provider}>
-                    <span>{provider === 'codex' ? 'Codex' : 'Claude Code'}</span>
-                    <button
-                      onClick={() =>
-                        call(
-                          () => window.hub.hooks('connect', provider),
-                          `${provider} hook connected. Restart the agent.`,
-                        )
-                      }
-                    >
-                      Connect
-                    </button>
-                    <button
-                      onClick={() =>
-                        call(
-                          () => window.hub.hooks('remove', provider),
-                          `${provider} hook removed.`,
-                        )
-                      }
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-                <h2>Robo API key</h2>
-                <div className="key-row">
-                  <input
-                    type="password"
-                    aria-label="OpenAI API key"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Your OpenAI API key"
-                  />
-                  <button
-                    onClick={() =>
-                      call(async () => {
-                        await window.hub.roboKey(apiKey);
-                        setApiKey('');
-                      }, 'Key saved with Windows encryption')
-                    }
-                  >
-                    <KeyRound size={18} /> Save
-                  </button>
-                </div>
-              </div>
             </div>
           </section>
         )}
@@ -928,6 +1007,7 @@ function PagedText({ text }) {
   );
 }
 function MusicPage({
+  now,
   state,
   activeTrack,
   audio,
@@ -942,9 +1022,24 @@ function MusicPage({
   const system = state.systemMedia;
   const title = system?.title || activeTrack?.name || 'Your soundtrack starts here';
   const isPlaying = system ? system.playing : playing;
-  const percent = system?.duration
-    ? Math.min(100, (system.position / system.duration) * 100)
-    : progress;
+  const position = system
+    ? Math.min(
+        system.duration || Infinity,
+        Math.max(
+          0,
+          (system.position || 0) +
+            (isPlaying && system.sampledAt
+              ? Math.max(0, (now.getTime() - system.sampledAt) / 1000)
+              : 0),
+        ),
+      )
+    : 0;
+  const lyricLines = system?.lyrics?.lines || [];
+  const lyric = lyricLines.reduce(
+    (current, line) => (line.at <= position + 0.15 ? line.text : current),
+    '',
+  );
+  const percent = system?.duration ? Math.min(100, (position / system.duration) * 100) : progress;
   const control = (action, seconds) =>
     system ? call(() => window.hub.mediaControl(action, seconds)) : null;
   return (
@@ -966,6 +1061,17 @@ function MusicPage({
               ? 'Playing from your files'
               : 'Add audio files or play music in another Windows app.'}
         </p>
+        {lyric && (
+          <p className="music-lyric" aria-label="Current lyric">
+            {lyric}
+          </p>
+        )}
+        {system?.duration > 0 && (
+          <div className="music-times mono">
+            <span>{fmt(position)}</span>
+            <span>{fmt(Math.max(0, system.duration - position))}</span>
+          </div>
+        )}
         <input
           className="seek"
           aria-label="Track position"
@@ -1235,7 +1341,12 @@ function HomePage({ now, jobsToday, state, remaining, navigate, play }) {
     </section>
   );
 }
-function AgentPage({ state, call, navigate }) {
+function AgentPage({ state, call, openSettings }) {
+  const [selectedEventId, setSelectedEventId] = useState(null);
+  const selectedEvent = state.events.find((event) => event.id === selectedEventId);
+  useEffect(() => {
+    if (state.pending.length) setSelectedEventId(null);
+  }, [state.pending.length]);
   return (
     <section className="agent-page">
       <div className="agent-side">
@@ -1253,57 +1364,84 @@ function AgentPage({ state, call, navigate }) {
         <div className="eyebrow">JOBS TODAY</div>
       </div>
       <div className="agent-feed">
-        <h1>
-          Codex <span className="subtle">and Claude Code</span>
-        </h1>
-        {state.pending?.length > 0 && (
-          <div className="permission">
-            <strong>Decision needed</strong>
-            <PagedItems items={state.pending} pageSize={1}>
-              {(p) => (
-                <div key={p.id}>
-                  <p>{p.summary}</p>
-                  {p.detail && <pre title={p.detail}>{p.detail}</pre>}
-                  <div className="decision-row">
-                    <button onClick={() => call(() => window.hub.decide(p.id, 'deny'))}>
-                      Deny
-                    </button>
-                    <button onClick={() => call(() => window.hub.decide(p.id, 'allow'))}>
-                      Allow once
-                    </button>
-                  </div>
-                </div>
-              )}
-            </PagedItems>
+        {selectedEvent?.detail ? (
+          <div className="agent-detail">
+            <button
+              className="agent-back"
+              onClick={() => setSelectedEventId(null)}
+              aria-label="Back to agent activity"
+            >
+              ‹ Activity
+            </button>
+            <strong>
+              {selectedEvent.provider === 'claude' ? 'Claude Code' : 'Codex'} · final response
+            </strong>
+            <PagedText text={selectedEvent.detail} />
           </div>
-        )}
-        {state.events.length ? (
-          <PagedItems items={state.events} pageSize={2} className="event-feed">
-            {(event) => (
-              <div className="event" key={event.id}>
-                <span className={`event-mark ${event.kind}`} />
-                <span>
-                  <strong>{event.provider === 'claude' ? 'Claude Code' : 'Codex'}</strong>
-                  <small>{event.summary}</small>
-                </span>
-                <time>
-                  {new Date(event.occurred_at).toLocaleTimeString([], {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
-                </time>
+        ) : (
+          <>
+            <h1>
+              Codex <span className="subtle">and Claude Code</span>
+            </h1>
+            {state.pending?.length > 0 && (
+              <div className="permission">
+                <strong>Decision needed</strong>
+                <PagedItems items={state.pending} pageSize={1}>
+                  {(p) => (
+                    <div key={p.id}>
+                      <p>{p.summary}</p>
+                      {p.detail && <pre title={p.detail}>{p.detail}</pre>}
+                      <div className="decision-row">
+                        <button onClick={() => call(() => window.hub.decide(p.id, 'deny'))}>
+                          Deny
+                        </button>
+                        <button onClick={() => call(() => window.hub.decide(p.id, 'allow'))}>
+                          Allow once
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </PagedItems>
               </div>
             )}
-          </PagedItems>
-        ) : (
-          <div className="agent-empty">
-            Connect your coding agent to see recent activity and decisions in this space.
-            <div>
-              <button onClick={() => navigate('settings')}>
-                Connect agents <ExternalLink size={15} />
-              </button>
-            </div>
-          </div>
+            {state.events.length ? (
+              <PagedItems items={state.events} pageSize={2} className="event-feed">
+                {(event) => (
+                  <div className="event" key={event.id}>
+                    <span className={`event-mark ${event.kind}`} />
+                    <span>
+                      <strong>{event.provider === 'claude' ? 'Claude Code' : 'Codex'}</strong>
+                      <small>{event.summary}</small>
+                    </span>
+                    <time>
+                      {new Date(event.occurred_at).toLocaleTimeString([], {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}
+                    </time>
+                    {event.detail && state.pending.length === 0 && (
+                      <button
+                        className="event-open"
+                        onClick={() => setSelectedEventId(event.id)}
+                        aria-label={`Read ${event.provider} final response`}
+                      >
+                        Read
+                      </button>
+                    )}
+                  </div>
+                )}
+              </PagedItems>
+            ) : (
+              <div className="agent-empty">
+                Connect your coding agent to see recent activity and decisions in this space.
+                <div>
+                  <button onClick={() => openSettings('connections')}>
+                    Connect agents <ExternalLink size={15} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>

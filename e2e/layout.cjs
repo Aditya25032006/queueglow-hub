@@ -55,7 +55,7 @@ const { mainPage, hoverNotch, moveSystemCursor } = require('./window.cjs');
         }),
       );
     }
-    for (const name of ['All apps', 'Customize', 'Settings']) {
+    for (const name of ['All apps', 'Customize']) {
       await win.evaluate(() => {
         if (!document.querySelector('.menu'))
           document.querySelector('[aria-label="More options"]').click();

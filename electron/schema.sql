@@ -2,7 +2,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS agent_jobs(id TEXT PRIMARY KEY, provider TEXT NOT NULL CHECK(provider IN ('codex','claude','demo')), title TEXT NOT NULL DEFAULT '', state TEXT NOT NULL CHECK(state IN ('idle','working','attention','done','error')), started_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS agent_events(id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES agent_jobs(id) ON DELETE CASCADE, provider TEXT NOT NULL, kind TEXT NOT NULL, summary TEXT NOT NULL, occurred_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS agent_events(id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES agent_jobs(id) ON DELETE CASCADE, provider TEXT NOT NULL, kind TEXT NOT NULL, summary TEXT NOT NULL, occurred_at TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS idx_agent_events_job_time ON agent_events(job_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_events_time ON agent_events(occurred_at DESC);
 CREATE TABLE IF NOT EXISTS clips(id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('text','link')), preview TEXT NOT NULL, content TEXT NOT NULL, content_hash TEXT NOT NULL UNIQUE, captured_at TEXT NOT NULL);

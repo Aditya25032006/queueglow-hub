@@ -45,7 +45,10 @@ const { mainPage, hoverNotch, moveSystemCursor } = require('./window.cjs');
           hook_event_name: 'PermissionRequest',
           session_id: `e2e-${provider}`,
           tool_name: 'Bash',
-          tool_input: { description: `Run a harmless ${provider} test command` },
+          tool_input: {
+            description: `Run a harmless ${provider} test command`,
+            command: 'Write-Output Queueglow-test',
+          },
         }),
       );
       await win

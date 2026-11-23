@@ -26,10 +26,6 @@ export default function Connectivity({ system, open, setOpen, dismissOtherPanels
   return (
     <div
       className="connectivity-wrap"
-      onMouseEnter={() => {
-        dismissOtherPanels();
-        setOpen(true);
-      }}
       onMouseLeave={() => setOpen(false)}
       onKeyDown={(event) => {
         if (event.key === 'Escape') setOpen(false);

@@ -20,6 +20,7 @@ const crypto = require('node:crypto');
 const { HubStore } = require('./store.cjs');
 const hooks = require('./hooks.cjs');
 const { MediaBridge } = require('./media.cjs');
+const { discoverCli, chooseProvider, askCli, clipAnswer } = require('./robo-cli.cjs');
 const { DURATION_MS, IDLE_SECONDS, gaze } = require('./island-motion.cjs');
 
 if (process.env.QUEUEGLOW_SOFTWARE_RENDER === '1') app.disableHardwareAcceleration();
@@ -30,6 +31,7 @@ const root =
 const ipcRoot = path.join(root, 'ipc');
 let store,
   win,
+  settingsWin,
   tray,
   mediaBridge,
   folded = true,
@@ -46,9 +48,60 @@ let motionTimer = null,
   lastPresenceAt = 0;
 let lastCursorPoint = null,
   lastCursorMovementAt = Date.now();
+let shapedNotch = false;
+let roboBusy = false;
+let cliPaths;
+let cliCheckedAt = 0;
 const MAX_EVENT = 64000;
 const EXPANDED = { width: 720, height: 330, zoom: 0.6 };
 const FOLDED = { width: 108, height: 36 };
+const ISLAND_SCALE = { compact: 0.9, standard: 1, large: 1.12 };
+const SETTINGS_SECTIONS = new Set([
+  'home',
+  'connections',
+  'ai',
+  'apps',
+  'robo',
+  'general',
+  'notifications',
+  'island',
+  'focus',
+]);
+
+function islandSize(size = EXPANDED) {
+  const scale = ISLAND_SCALE[store.setting('islandSize')];
+  return { width: Math.round(size.width * scale), height: Math.round(size.height * scale) };
+}
+
+function resetIslandBounds() {
+  if (!win || win.isDestroyed()) return;
+  const size = islandSize();
+  win.setBounds(bounds(size.width, size.height));
+  win.webContents.setZoomFactor(EXPANDED.zoom * ISLAND_SCALE[store.setting('islandSize')]);
+}
+
+function islandInput(fold) {
+  const clickableNotch = fold && store.setting('islandExpansion') === 'click';
+  if (clickableNotch && ['win32', 'linux'].includes(process.platform)) {
+    const area = win.getBounds();
+    const zoom = win.webContents.getZoomFactor();
+    const width = Math.round(FOLDED.width * zoom);
+    win.setShape([
+      {
+        x: Math.floor((area.width - width) / 2),
+        y: 0,
+        width,
+        height: Math.ceil(FOLDED.height * zoom),
+      },
+    ]);
+    shapedNotch = true;
+  } else if (shapedNotch) {
+    win.setShape([]);
+    shapedNotch = false;
+  }
+  const ignore = fold && !clickableNotch;
+  win.setIgnoreMouseEvents(ignore, ignore ? { forward: true } : undefined);
+}
 
 function bounds(width, height) {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
@@ -64,6 +117,7 @@ function emit(extra = {}) {
       systemMedia: mediaBridge?.media || null,
       volume: mediaBridge?.volume ?? null,
       system: mediaBridge?.system || null,
+      roboCapabilities: roboCapabilities(),
       folded,
       motion,
       ...extra,
@@ -80,6 +134,7 @@ function current() {
     systemMedia: mediaBridge?.media || null,
     volume: mediaBridge?.volume ?? null,
     system: mediaBridge?.system || null,
+    roboCapabilities: roboCapabilities(),
     folded,
     motion,
   };
@@ -89,15 +144,14 @@ function resize(fold, snap = false) {
   if (!snap && targetFolded === fold)
     return {
       folded: fold,
-      width: fold ? FOLDED.width : EXPANDED.width,
-      height: fold ? FOLDED.height : EXPANDED.height,
+      ...islandSize(fold ? FOLDED : EXPANDED),
     };
   if (motionTimer) {
     clearTimeout(motionTimer);
     motionTimer = null;
   }
   targetFolded = fold;
-  const size = fold ? FOLDED : EXPANDED;
+  const size = islandSize(fold ? FOLDED : EXPANDED);
   const reduced = store?.setting('reduceMotion');
   motion = snap || reduced ? 'idle' : fold ? 'folding' : 'expanding';
   if (!fold) folded = false;
@@ -110,18 +164,18 @@ function resize(fold, snap = false) {
   }
   if (motion === 'idle') {
     folded = fold;
-    win.setIgnoreMouseEvents(fold, fold ? { forward: true } : undefined);
+    islandInput(fold);
     emitMotion();
   } else {
     if (!fold) {
-      win.setIgnoreMouseEvents(false);
+      islandInput(false);
     }
     emitMotion();
     motionTimer = setTimeout(() => {
       motionTimer = null;
       if (!win || win.isDestroyed()) return;
       if (fold) {
-        win.setIgnoreMouseEvents(true, { forward: true });
+        islandInput(true);
       }
       folded = fold;
       motion = 'idle';
@@ -132,11 +186,12 @@ function resize(fold, snap = false) {
 }
 function pointerInsideNotch(point) {
   const rect = win.getBounds();
+  const notch = islandSize(FOLDED);
   return (
-    point.x >= rect.x + (rect.width - FOLDED.width) / 2 &&
-    point.x < rect.x + (rect.width + FOLDED.width) / 2 &&
+    point.x >= rect.x + (rect.width - notch.width) / 2 &&
+    point.x < rect.x + (rect.width + notch.width) / 2 &&
     point.y >= rect.y &&
-    point.y < rect.y + FOLDED.height
+    point.y < rect.y + notch.height
   );
 }
 function pointerInside() {
@@ -152,7 +207,11 @@ function pointerInside() {
 function checkPointerExit() {
   if (!win || win.isDestroyed() || motion !== 'idle') return;
   if (targetFolded) {
-    if (pointerInsideNotch(screen.getCursorScreenPoint())) resize(false);
+    if (
+      store.setting('islandExpansion') === 'hover' &&
+      pointerInsideNotch(screen.getCursorScreenPoint())
+    )
+      resize(false);
     return;
   }
   if (pointerInside()) {
@@ -182,6 +241,36 @@ function pollPresence() {
     lastPresenceAt = Date.now();
   }
 }
+
+function agentNotification(event) {
+  const preference = {
+    permission: 'notifyApprovals',
+    done: 'notifyCompletion',
+    error: 'notifyErrors',
+  }[event.kind];
+  if (
+    !preference ||
+    !Notification.isSupported() ||
+    !store.setting('notifications') ||
+    !store.setting(preference)
+  )
+    return;
+  if (event.kind !== 'permission' && store.setting('focusGuard') && store.hasActiveFocus()) return;
+  const provider = event.provider === 'claude' ? 'Claude Code' : 'Codex';
+  const title =
+    event.kind === 'permission'
+      ? provider + ' needs your decision'
+      : event.kind === 'done'
+        ? provider + ' finished a turn'
+        : provider + ' needs attention';
+  const showSummary = store.setting('notificationPresentation') === 'summary';
+  new Notification({
+    title,
+    body: showSummary ? event.summary : '',
+    silent: !store.setting('sound'),
+  }).show();
+}
+
 function pollEvents() {
   const inbox = path.join(ipcRoot, 'inbox');
   fs.mkdirSync(inbox, { recursive: true });
@@ -197,6 +286,7 @@ function pollEvents() {
       if (fs.statSync(file).size > MAX_EVENT) continue;
       const event = JSON.parse(fs.readFileSync(file, 'utf8'));
       store.addAgentEvent(event);
+      changed = true;
       if (event.kind === 'permission' && Number(event.expires_at) > Date.now() / 1000) {
         pending.set(event.id, {
           id: event.id,
@@ -205,13 +295,9 @@ function pollEvents() {
           detail: String(event.detail || '').slice(0, 4000),
           expires_at: Number(event.expires_at),
         });
-        if (Notification.isSupported() && store.setting('notifications'))
-          new Notification({
-            title: 'Queueglow needs your decision',
-            body: event.summary || 'Agent permission request',
-          }).show();
+        agentNotification(event);
       }
-      changed = true;
+      if (event.kind === 'done' || event.kind === 'error') agentNotification(event);
     } catch (error) {
       console.error('Agent event:', error.message);
     } finally {
@@ -223,11 +309,15 @@ function pollEvents() {
       pending.delete(id);
       changed = true;
     }
-  if (changed) emit();
+  if (changed) {
+    emit();
+    emitSettingsActivity();
+  }
 }
 function openWindow() {
+  const size = islandSize();
   win = new BrowserWindow({
-    ...bounds(EXPANDED.width, EXPANDED.height),
+    ...bounds(size.width, size.height),
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -252,8 +342,8 @@ function openWindow() {
       win.hide();
     }
   });
-  win.webContents.setZoomFactor(EXPANDED.zoom);
-  win.setIgnoreMouseEvents(true, { forward: true });
+  resetIslandBounds();
+  islandInput(true);
   win.setMenuBarVisibility(false);
   win.webContents.on('did-finish-load', () => {
     lastPresence = '';
@@ -265,7 +355,8 @@ function openWindow() {
   });
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   const reposition = () => {
-    win.setBounds(bounds(EXPANDED.width, EXPANDED.height));
+    resetIslandBounds();
+    if (folded) islandInput(true);
   };
   screen.on('display-metrics-changed', reposition);
   screen.on('display-removed', reposition);
@@ -284,6 +375,7 @@ function openTray() {
         },
       },
       { label: 'Fold to eyes', click: () => resize(true) },
+      { label: 'Settings', click: () => openSettingsWindow() },
       { type: 'separator' },
       { label: 'Quit Queueglow', click: () => app.quit() },
     ]),
@@ -293,15 +385,210 @@ function openTray() {
     resize(false);
   });
 }
+
+function hookScript() {
+  const packaged = path.join(process.resourcesPath, 'agent_hook.ps1');
+  return fs.existsSync(packaged) ? packaged : path.join(__dirname, 'agent_hook.ps1');
+}
+
+function settingsActivity(state) {
+  return {
+    events: state.events.slice(0, 6).map(({ id, kind, provider, summary, occurred_at }) => ({
+      id,
+      kind,
+      provider,
+      summary,
+      occurred_at,
+    })),
+    jobs: state.jobs.length,
+    decisions: pending.size,
+    focus: state.focus,
+  };
+}
+
+function emitSettingsActivity() {
+  if (settingsWin && !settingsWin.isDestroyed())
+    settingsWin.webContents.send('settings:activity', settingsActivity(store.state()));
+}
+
+function currentSettings() {
+  const state = store.state();
+  const connections = Object.fromEntries(
+    ['codex', 'claude'].map((provider) => {
+      try {
+        return [provider, hooks.registrationStatus(provider, hookScript())];
+      } catch {
+        return [provider, 'unavailable'];
+      }
+    }),
+  );
+  const robo = roboProviders(true);
+  return {
+    settings: state.settings,
+    apps: state.apps,
+    activity: settingsActivity(state),
+    connections,
+    notificationsAvailable: Notification.isSupported(),
+    canLaunchOnLogin: app.isPackaged && process.platform === 'win32',
+    launchOnLogin:
+      app.isPackaged && process.platform === 'win32' && app.getLoginItemSettings().openAtLogin,
+    robo: {
+      provider: robo.provider,
+      codex: !!robo.cli.codex,
+      claude: !!robo.cli.claude,
+      openai: robo.hasKey,
+    },
+  };
+}
+
+function openSettingsWindow(section = 'home') {
+  if (!SETTINGS_SECTIONS.has(section)) throw new Error('Invalid settings section');
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    const activate = () => {
+      if (!settingsWin || settingsWin.isDestroyed()) return;
+      settingsWin.webContents.send('settings:navigate', section);
+      if (settingsWin.isMinimized()) settingsWin.restore();
+      settingsWin.show();
+      settingsWin.focus();
+    };
+    if (settingsWin.webContents.isLoadingMainFrame()) {
+      settingsWin.webContents.once('did-finish-load', activate);
+    } else {
+      activate();
+    }
+    return true;
+  }
+  const next = new BrowserWindow({
+    title: 'Queueglow Settings',
+    width: 940,
+    height: 710,
+    minWidth: 620,
+    minHeight: 520,
+    show: false,
+    backgroundColor: '#111a20',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      additionalArguments: ['--queueglow-settings'],
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  settingsWin = next;
+  next.setMenuBarVisibility(false);
+  next.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  next.webContents.on('will-navigate', (event) => event.preventDefault());
+  next.on('closed', () => {
+    settingsWin = null;
+  });
+  next.once('ready-to-show', () => next.show());
+  next
+    .loadFile(path.join(__dirname, '..', 'dist', 'settings.html'), { query: { section } })
+    .catch((error) => {
+      console.error('Settings window:', error.message);
+      if (!next.isDestroyed()) next.close();
+    });
+  return true;
+}
+
+function setHubSetting(key, value) {
+  store.setSetting(key, value);
+  if (key === 'clipboardEnabled' && value) lastClip = clipboard.readText();
+  if (key === 'islandSize') resetIslandBounds();
+  if ((key === 'islandSize' || key === 'islandExpansion') && targetFolded && motion === 'idle')
+    islandInput(true);
+  if (key === 'lyricsEnabled') mediaBridge?.setLyricsEnabled?.(value);
+  emit();
+}
+
+function saveRoboKey(value) {
+  if (typeof value !== 'string' || !value.trim() || value.length > 300)
+    throw new Error('Enter an API key up to 300 characters');
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows encryption is unavailable');
+  fs.writeFileSync(path.join(root, 'robo-key.bin'), safeStorage.encryptString(value.trim()));
+  emit();
+}
+
+function roboProviders(refresh = false) {
+  if (refresh || cliCheckedAt + 15000 < Date.now()) {
+    cliPaths = discoverCli();
+    cliCheckedAt = Date.now();
+  }
+  const hasKey = fs.existsSync(path.join(root, 'robo-key.bin'));
+  return {
+    cli: cliPaths,
+    hasKey,
+    provider: chooseProvider(store.setting('roboProvider'), { ...cliPaths, openai: hasKey }),
+  };
+}
+
+function roboCapabilities() {
+  const { provider } = roboProviders();
+  return {
+    provider,
+    screenAttachments: ['codex', 'openai'].includes(provider) && store.setting('roboScreenCapture'),
+  };
+}
+
+function registerSettings() {
+  ipcMain.handle('openSettings', (_event, section) => openSettingsWindow(section));
+  const settings = (action, handler) =>
+    ipcMain.handle('settings:' + action, (_event, ...args) => {
+      if (_event.sender !== settingsWin?.webContents) throw new Error('Invalid settings sender');
+      handler?.(...args);
+      return currentSettings();
+    });
+  settings('state');
+  settings('set', setHubSetting);
+  settings('shortcut', (index, shortcut) => {
+    store.setShortcut(index, shortcut);
+    emit();
+  });
+  settings('appVisible', (id, value) => {
+    store.setAppVisible(id, value);
+    emit();
+  });
+  settings('hook', (provider, action) => hooks.change(provider, action, hookScript()));
+  settings('login', (openAtLogin) => {
+    if (!app.isPackaged || process.platform !== 'win32') throw new Error('Startup is unavailable');
+    if (typeof openAtLogin !== 'boolean') throw new Error('Invalid startup preference');
+    app.setLoginItemSettings({ openAtLogin, path: process.execPath });
+  });
+  settings('roboKey', saveRoboKey);
+  settings('roboDisconnect', () => {
+    fs.rmSync(path.join(root, 'robo-key.bin'), { force: true });
+    emit();
+  });
+  ipcMain.handle('openShortcut', async (_event, index) => {
+    if (!Number.isInteger(index) || index < 0 || index > 3)
+      throw new Error('Invalid shortcut slot');
+    const shortcut = store.setting('customShortcuts')[index];
+    if (!shortcut) throw new Error('Shortcut has not been configured');
+    const url = new URL(shortcut.url);
+    if (url.protocol !== 'https:' || url.username || url.password)
+      throw new Error('Invalid shortcut address');
+    await shell.openExternal(url.href);
+  });
+}
+
 function register() {
+  registerSettings();
+  ipcMain.on('noteFlush', (event, body) => {
+    try {
+      if (event.sender !== win?.webContents) throw new Error('Invalid note sender');
+      store.saveNote(body);
+      event.returnValue = true;
+    } catch (error) {
+      event.returnValue = { error: error.message };
+    }
+  });
   ipcMain.handle('state', current);
   ipcMain.handle('fold', () => resize(true));
   ipcMain.handle('expand', () => resize(false));
   ipcMain.handle('quit', () => app.quit());
   ipcMain.handle('setting', (_e, key, value) => {
-    store.setSetting(key, value);
-    if (key === 'clipboardEnabled' && value) lastClip = clipboard.readText();
-    emit();
+    setHubSetting(key, value);
     return true;
   });
   ipcMain.handle('appVisible', (_e, id, value) => {
@@ -312,11 +599,13 @@ function register() {
   ipcMain.handle('focusStart', (_e, mode, seconds) => {
     store.startFocus(mode, seconds);
     emit();
+    emitSettingsActivity();
     return true;
   });
   ipcMain.handle('focusStop', () => {
     store.stopFocus();
     emit();
+    emitSettingsActivity();
     return true;
   });
   ipcMain.handle('clipClear', () => {
@@ -425,11 +714,7 @@ function register() {
     if (!Object.hasOwn(urls, target)) throw new Error('Invalid system settings target');
     return shell.openExternal(urls[target]);
   });
-  ipcMain.handle('hooks', (_e, action, provider) => {
-    const script = path.join(process.resourcesPath, 'agent_hook.ps1');
-    const devScript = path.join(__dirname, 'agent_hook.ps1');
-    return hooks.change(provider, action, fs.existsSync(script) ? script : devScript);
-  });
+  ipcMain.handle('hooks', (_e, action, provider) => hooks.change(provider, action, hookScript()));
   ipcMain.handle('decide', (_e, id, behavior) => {
     if (!['allow', 'deny'].includes(behavior) || !/^[0-9a-f-]{36}$/i.test(id))
       throw new Error('Invalid decision');
@@ -439,66 +724,86 @@ function register() {
     fs.writeFileSync(output, JSON.stringify({ id, behavior }));
     pending.delete(id);
     emit();
+    emitSettingsActivity();
     return true;
   });
-  ipcMain.handle('roboKey', (_e, value) => {
-    if (typeof value !== 'string' || value.length > 300) throw new Error('Invalid key');
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows encryption is unavailable');
-    fs.writeFileSync(path.join(root, 'robo-key.bin'), safeStorage.encryptString(value.trim()));
-    return true;
-  });
-  ipcMain.handle('roboTargets', async () =>
-    (
-      await desktopCapturer.getSources({
-        types: ['window'],
-        thumbnailSize: { width: 1, height: 1 },
-      })
-    )
+  ipcMain.handle('roboKey', (_e, value) => saveRoboKey(value));
+  ipcMain.handle('roboTargets', async () => {
+    if (!roboCapabilities().screenAttachments) return [];
+    const sources = await desktopCapturer.getSources({
+      types: ['window'],
+      thumbnailSize: { width: 1, height: 1 },
+    });
+    return sources
       .filter((source) => source.name && !/queueglow/i.test(source.name))
       .slice(0, 40)
-      .map((source) => ({ id: source.id, name: source.name.slice(0, 120) })),
-  );
-  ipcMain.handle('roboAsk', async (_e, prompt, captureTarget) => {
-    const clean = String(prompt || '')
-      .trim()
-      .slice(0, 2000);
-    if (!clean) throw new Error('Type a question');
-    const file = path.join(root, 'robo-key.bin');
-    if (!fs.existsSync(file)) throw new Error('Add your OpenAI API key in Settings first');
-    const key = safeStorage.decryptString(fs.readFileSync(file));
-    const content = [{ type: 'input_text', text: clean }];
-    if (captureTarget && captureTarget !== 'none') {
-      if (typeof captureTarget !== 'string' || captureTarget.length > 200)
-        throw new Error('Invalid capture target');
-      const isScreen = captureTarget === 'screen';
-      const sources = await desktopCapturer.getSources({
-        types: [isScreen ? 'screen' : 'window'],
-        thumbnailSize: { width: 1280, height: 720 },
-      });
-      const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-      const selected = isScreen
-        ? sources.find((source) => source.display_id === String(display.id)) || sources[0]
-        : sources.find((source) => source.id === captureTarget && !/queueglow/i.test(source.name));
-      if (!selected || selected.thumbnail.isEmpty())
-        throw new Error('Could not capture the screen');
-      content.push({ type: 'input_image', image_url: selected.thumbnail.toDataURL() });
-    }
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-4.1-mini', input: [{ role: 'user', content }] }),
-      signal: AbortSignal.timeout(30000),
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || 'Robo request failed');
-    return (
-      (data.output || [])
-        .flatMap((item) => item.content || [])
-        .filter((item) => item.type === 'output_text')
-        .map((item) => item.text)
-        .join('\n') || 'No text returned'
-    );
+      .map((source) => ({ id: source.id, name: source.name.slice(0, 120) }));
   });
+  ipcMain.handle('roboAsk', async (_e, prompt, captureTarget) => {
+    if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('Type a question');
+    if (prompt.length > 2000) throw new Error('Questions can contain up to 2,000 characters');
+    if (roboBusy) throw new Error('Robo is already answering a question');
+    const { cli, provider } = roboProviders(true);
+    if (!provider) throw new Error('Choose an installed agent or add an OpenAI key in AI & Chat');
+    roboBusy = true;
+    try {
+      const screenshot = await captureRoboImage(captureTarget, provider);
+      if (provider === 'openai') return await askRoboOpenAI(prompt.trim(), screenshot);
+      return await askCli(provider, cli[provider], prompt.trim(), screenshot);
+    } finally {
+      roboBusy = false;
+    }
+  });
+}
+
+async function captureRoboImage(target, provider) {
+  if (target == null || target === 'none') return null;
+  if (!store.setting('roboScreenCapture'))
+    throw new Error('Screen attachments are disabled in Settings');
+  if (provider === 'claude') throw new Error('Claude Code in Robo supports text questions only');
+  if (typeof target !== 'string' || target.length > 200) throw new Error('Invalid capture target');
+  const isScreen = target === 'screen';
+  const sources = await desktopCapturer.getSources({
+    types: [isScreen ? 'screen' : 'window'],
+    thumbnailSize: { width: 1280, height: 720 },
+  });
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const selected = isScreen
+    ? sources.find((source) => source.display_id === String(display.id)) || sources[0]
+    : sources.find((source) => source.id === target && !/queueglow/i.test(source.name));
+  if (!selected || selected.thumbnail.isEmpty()) throw new Error('Could not capture the screen');
+  return selected.thumbnail.toPNG();
+}
+
+async function askRoboOpenAI(prompt, screenshot) {
+  const file = path.join(root, 'robo-key.bin');
+  const key = safeStorage.decryptString(fs.readFileSync(file));
+  const content = [{ type: 'input_text', text: prompt }];
+  if (screenshot) {
+    content.push({
+      type: 'input_image',
+      image_url: 'data:image/png;base64,' + screenshot.toString('base64'),
+    });
+  }
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { authorization: 'Bearer ' + key, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-4.1-mini',
+      max_output_tokens: 1500,
+      input: [{ role: 'user', content }],
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!response.ok) throw new Error('OpenAI could not answer. Check the API key in AI & Chat.');
+  const data = await response.json();
+  return clipAnswer(
+    (data.output || [])
+      .flatMap((item) => item.content || [])
+      .filter((item) => item.type === 'output_text')
+      .map((item) => item.text)
+      .join('\n'),
+  );
 }
 app.whenReady().then(() => {
   fs.mkdirSync(root, { recursive: true });
@@ -507,6 +812,7 @@ app.whenReady().then(() => {
   openWindow();
   openTray();
   mediaBridge = new MediaBridge(process.resourcesPath, () => emit());
+  mediaBridge.setLyricsEnabled?.(store.setting('lyricsEnabled'));
   mediaBridge.start();
   setInterval(checkPointerExit, 100);
   setInterval(pollPresence, 100);

@@ -86,7 +86,7 @@ async function waitForBounds(app, width, height) {
       eye.height > 4 && eye.opacity !== '0' && eye.background === 'rgb(255, 255, 255)',
       `Expanded eyes should be visible: ${JSON.stringify(eye)}`,
     );
-    await win.getByRole('button', { name: 'Wi-Fi and Bluetooth' }).hover();
+    await win.getByRole('button', { name: 'Wi-Fi and Bluetooth' }).click();
     await win.getByRole('group', { name: 'Wi-Fi and Bluetooth controls' }).waitFor();
     await win.getByRole('button', { name: 'Wi-Fi networks' }).waitFor();
     await win.getByRole('button', { name: 'Bluetooth devices' }).waitFor();
@@ -109,6 +109,8 @@ async function waitForBounds(app, width, height) {
       const toggle = win.getByRole('button', { name: `Turn ${label} ${enabled ? 'off' : 'on'}` });
       await toggle.waitFor();
       assert.equal(await toggle.isEnabled(), true, `${label} toggle should be available`);
+      await toggle.hover();
+      await win.getByRole('group', { name: 'Wi-Fi and Bluetooth controls' }).waitFor();
     }
     const connectivityLayout = await win.evaluate(() => {
       const panel = document.querySelector('.connectivity-popover').getBoundingClientRect();
@@ -154,6 +156,8 @@ async function waitForBounds(app, width, height) {
       layout['.home-cards'].bottom <= layout['.dock'].top,
       `Home cards must fit above dock: ${JSON.stringify(layout)}`,
     );
+    await win.getByRole('button', { name: 'Music', exact: true }).click();
+    await win.screenshot({ path: path.join(project, 'screenshot-music.png') });
     await win.getByRole('button', { name: 'Codex', exact: true }).click();
     await win.waitForSelector('.agent-page');
     await win.screenshot({ path: path.join(project, 'screenshot-codex.png') });
@@ -164,8 +168,11 @@ async function waitForBounds(app, width, height) {
     await win.getByRole('button', { name: 'Clips', exact: true }).click();
     await win.getByRole('checkbox', { name: 'Capture text' }).check();
     await win.getByRole('button', { name: 'Note', exact: true }).click();
-    await win.getByRole('textbox', { name: 'Your note' }).fill('Smoke test note');
-    await win.getByRole('button', { name: 'Save note' }).click();
+    await win.getByRole('textbox', { name: 'Your note' }).fill('[ ] Smoke test note');
+    await win.getByRole('button', { name: 'Check Smoke test note' }).click();
+    await win.waitForFunction(
+      async () => (await window.hub.state()).note === '[x] Smoke test note',
+    );
     await win.getByRole('button', { name: 'Agenda', exact: true }).click();
     await win.getByRole('button', { name: 'Month', exact: true }).click();
     await win.locator('.month-grid button').first().waitFor();
@@ -176,7 +183,8 @@ async function waitForBounds(app, width, height) {
       true,
       'Robo panel should fit without outer scrolling',
     );
-    await win.getByRole('combobox', { name: 'Image to include' }).selectOption('screen');
+    if (await win.getByRole('combobox', { name: 'Image to include' }).count())
+      await win.getByRole('combobox', { name: 'Image to include' }).selectOption('screen');
     await win.getByRole('button', { name: 'Modes', exact: true }).click();
     await win.getByRole('button', { name: /Sleep/ }).waitFor();
     await win.getByRole('button', { name: /Game/ }).waitFor();
@@ -225,12 +233,22 @@ async function waitForBounds(app, width, height) {
       return window.hub.brightnessSet(current.brightnessPercent);
     });
     assert.equal(typeof hardware.system.brightnessPercent, 'number');
+    const volume = await win.evaluate(async () => {
+      const current = (await window.hub.state()).volume;
+      return window.hub.volumeSet(current);
+    });
+    assert.equal(typeof volume.volume, 'number');
     await win.screenshot({ path: path.join(project, 'screenshot-controls.png') });
     await win.locator('.shell').dispatchEvent('mouseout', { relatedTarget: null });
     await win.waitForFunction(
       () => document.querySelector('.shell')?.classList.contains('motion-folded'),
       null,
       { timeout: 5000 },
+    );
+    await win.waitForFunction(
+      () => getComputedStyle(document.querySelector('.shell')).clipPath.startsWith('inset('),
+      null,
+      { timeout: 1500, polling: 50 },
     );
     assert.match(
       await win.locator('.shell').evaluate((el) => getComputedStyle(el).clipPath),
@@ -265,9 +283,11 @@ async function waitForBounds(app, width, height) {
     );
     assert.deepEqual(pageErrors, [], 'No renderer errors');
     const memory = await app.evaluate(({ app }) =>
-      app
-        .getAppMetrics()
-        .map((item) => ({ type: item.type, workingSetKB: item.memory.workingSetSize })),
+      app.getAppMetrics().map((item) => ({
+        type: item.type,
+        workingSetKB: item.memory.workingSetSize,
+        privateKB: item.memory.privateBytes,
+      })),
     );
     console.log('Electron process memory', memory);
     console.log(

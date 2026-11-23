@@ -44,7 +44,7 @@ const { mainPage, hoverNotch, moveSystemCursor } = require('./window.cjs');
       assert.equal(result.system[`${target}Enabled`], enabled);
     }
     if (process.env.QUEUEGLOW_TEST_RADIO_TOGGLE === '1') {
-      await win.getByRole('button', { name: 'Wi-Fi and Bluetooth' }).hover();
+      await win.getByRole('button', { name: 'Wi-Fi and Bluetooth' }).click();
       await win.getByRole('button', { name: `Turn Bluetooth ${original ? 'off' : 'on'}` }).click();
       await win
         .getByRole('button', { name: `Turn Bluetooth ${original ? 'on' : 'off'}` })
