@@ -54,7 +54,12 @@ const hub = {
   roboAsk: (prompt, captureTarget) => invoke('roboAsk', prompt, captureTarget),
   roboTargets: () => invoke('roboTargets'),
   roboKey: (key) => invoke('roboKey', key),
+  updateState: () => invoke('updates:state'),
+  checkForUpdates: () => invoke('updates:check'),
+  downloadUpdate: () => invoke('updates:download'),
+  installUpdate: () => invoke('updates:install'),
   onUpdate: (callback) => subscribe('update', callback),
+  onUpdateStatus: (callback) => subscribe('updateStatus', callback),
   onMotion: (callback) => subscribe('motion', callback),
   onPresence: (callback) => subscribe('presence', callback),
 };

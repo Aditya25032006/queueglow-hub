@@ -37,11 +37,11 @@ Queueglow stays out of the taskbar and is controlled from the tray menu.
 
 ## Quick start
 
-1. Download the portable ZIP from [Releases](../../releases) when available.
-2. Extract the whole folder and run `QueueglowHub.exe`.
-3. Use the tray icon to reopen the island or quit. Closing the window leaves the tray process running.
+1. Download and run `QueueglowHub-Setup` from [Releases](../../releases). The per-user installer puts the app and its runtime files together and adds Start menu and optional desktop shortcuts.
+2. Open Queueglow from the Start menu. It stays in the system tray when its window is closed.
+3. Use the `Updates` menu to check GitHub Releases, download an update, and choose **Restart to update** to install it.
 
-> The preview build is unsigned, so Windows may show a warning.
+Existing portable-folder users need to run the installer once to switch to the install type that supports in-app updates; their Queueglow data stays in `%LOCALAPPDATA%\Queueglow`. Windows may warn because the app is unsigned.
 
 ## Privacy
 
@@ -65,7 +65,7 @@ npm test
 npm run desktop
 ```
 
-To create a portable app folder, run `npm run package:win`. Output goes to `release/QueueglowHub-win32-x64`.
+To create the portable development build, run `npm run package:win`. To create the distributable installer locally, run `npm run release:win`; output goes to `release/installer`. Tag a version as `v<package version>` to have GitHub Actions build and publish the installer plus update metadata. The source checkout does not need a Python environment or a prebuilt hook executable; the coding-agent hook is `electron/agent_hook.ps1`.
 
 No Python environment or prebuilt hook executable is needed. The coding-agent hook is `electron/agent_hook.ps1`.
 

@@ -111,6 +111,7 @@ export default function App() {
   const [connectivityOpen, setConnectivityOpen] = useState(false);
   const [error, setError] = useState(''),
     [success, setSuccess] = useState('');
+  const [updateState, setUpdateState] = useState({ supported: false, status: 'idle', message: '' });
   const [duration, setDuration] = useState(25),
     [selectedMode, setSelectedMode] = useState('work');
   const [note, setNote] = useState(''),
@@ -167,6 +168,13 @@ export default function App() {
         noteDraft.current = s.note || '';
       }
     });
+  }, []);
+  useEffect(() => {
+    window.hub
+      .updateState()
+      .then(setUpdateState)
+      .catch(() => {});
+    return window.hub.onUpdateStatus(setUpdateState);
   }, []);
   useEffect(() => {
     const flush = () => {
@@ -240,6 +248,28 @@ export default function App() {
     try {
       await fn();
       if (message) setSuccess(message);
+    } catch (e) {
+      setError(e.message || String(e));
+    }
+  };
+  const updateAction = async () => {
+    setError('');
+    setSuccess('');
+    try {
+      if (!updateState.supported) {
+        setSuccess(
+          updateState.message || 'Install the Queueglow setup once to enable in-app updates.',
+        );
+      } else if (updateState.status === 'downloaded') {
+        await window.hub.installUpdate();
+      } else if (updateState.status === 'available') {
+        await window.hub.downloadUpdate();
+      } else {
+        const next = await window.hub.checkForUpdates();
+        setUpdateState(next);
+        if (next.status === 'current') setSuccess(next.message);
+        else if (next.status === 'error') setError(next.message);
+      }
     } catch (e) {
       setError(e.message || String(e));
     }
@@ -358,13 +388,23 @@ export default function App() {
               Settings
             </button>
             <button
-              onClick={() => {
-                setMenu(false);
-                setSuccess('Updates are not configured in this preview.');
-              }}
+              onClick={updateAction}
+              disabled={updateState.status === 'checking' || updateState.status === 'downloading'}
             >
               <RefreshCw size={19} />
-              Updates
+              {updateState.status === 'downloaded'
+                ? 'Restart to update'
+                : updateState.status === 'available'
+                  ? `Download ${updateState.version}`
+                  : updateState.status === 'downloading'
+                    ? `Downloading ${updateState.percent || 0}%`
+                    : updateState.status === 'checking'
+                      ? 'Checking…'
+                      : updateState.status === 'error'
+                        ? 'Retry update check'
+                        : updateState.status === 'current'
+                          ? 'Check for updates'
+                          : 'Updates'}
             </button>
             <button
               onClick={() => {

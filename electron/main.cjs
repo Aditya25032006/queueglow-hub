@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { autoUpdater } = require('electron-updater');
 const { HubStore } = require('./store.cjs');
 const hooks = require('./hooks.cjs');
 const { MediaBridge } = require('./media.cjs');
@@ -52,6 +53,7 @@ let lastCursorPoint = null,
 let shapedNotch = false;
 let activeGlobalHotkey = null;
 let roboBusy = false;
+let updateState = { supported: false, status: 'idle', version: app.getVersion() };
 let cliPaths;
 let cliCheckedAt = 0;
 const MAX_EVENT = 64000;
@@ -637,6 +639,53 @@ function register() {
     }
   });
   ipcMain.handle('state', current);
+  ipcMain.handle('updates:state', () => updateState);
+  ipcMain.handle('updates:check', async () => {
+    if (!updateState.supported) return updateState;
+    updateState = { ...updateState, status: 'checking', message: 'Checking for updates…' };
+    sendUpdateState();
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      if (result && result.isUpdateAvailable === false) {
+        updateState = { ...updateState, status: 'current', message: 'Queueglow is up to date.' };
+        sendUpdateState();
+      }
+    } catch (error) {
+      updateState = {
+        ...updateState,
+        status: 'error',
+        message: error.message || 'Could not check for updates.',
+      };
+      sendUpdateState();
+    }
+    return updateState;
+  });
+  ipcMain.handle('updates:download', async () => {
+    if (!updateState.supported || updateState.status !== 'available') return updateState;
+    try {
+      updateState = {
+        ...updateState,
+        status: 'downloading',
+        percent: 0,
+        message: 'Downloading update…',
+      };
+      sendUpdateState();
+      await autoUpdater.downloadUpdate();
+    } catch (error) {
+      updateState = {
+        ...updateState,
+        status: 'error',
+        message: error.message || 'Could not download the update.',
+      };
+      sendUpdateState();
+    }
+    return updateState;
+  });
+  ipcMain.handle('updates:install', () => {
+    if (!updateState.supported || updateState.status !== 'downloaded') return false;
+    autoUpdater.quitAndInstall(false, true);
+    return true;
+  });
   ipcMain.handle('fold', () => resize(true));
   ipcMain.handle('expand', () => resize(false));
   ipcMain.handle('quit', () => app.quit());
@@ -814,6 +863,70 @@ function register() {
   });
 }
 
+function sendUpdateState() {
+  if (win && !win.isDestroyed()) win.webContents.send('updateStatus', updateState);
+}
+
+function configureUpdater() {
+  const metadata = path.join(process.resourcesPath, 'app-update.yml');
+  const supported = process.platform === 'win32' && app.isPackaged && fs.existsSync(metadata);
+  updateState = {
+    supported,
+    status: 'idle',
+    version: app.getVersion(),
+    message: supported ? '' : 'Install the Queueglow setup once to enable in-app updates.',
+  };
+  if (!supported) return;
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.on('checking-for-update', () => {
+    updateState = { ...updateState, status: 'checking', message: 'Checking for updates…' };
+    sendUpdateState();
+  });
+  autoUpdater.on('update-available', (info) => {
+    updateState = {
+      ...updateState,
+      status: 'available',
+      version: info.version,
+      message: `Version ${info.version} is available.`,
+    };
+    sendUpdateState();
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    updateState = {
+      ...updateState,
+      status: 'current',
+      version: info.version || app.getVersion(),
+      message: 'Queueglow is up to date.',
+    };
+    sendUpdateState();
+  });
+  autoUpdater.on('download-progress', (progress) => {
+    updateState = {
+      ...updateState,
+      status: 'downloading',
+      percent: Math.floor(progress.percent),
+      message: `Downloading update… ${Math.floor(progress.percent)}%`,
+    };
+    sendUpdateState();
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    updateState = {
+      ...updateState,
+      status: 'downloaded',
+      version: info.version,
+      percent: 100,
+      message: `Version ${info.version} is ready to install.`,
+    };
+    sendUpdateState();
+  });
+  autoUpdater.on('error', (error) => {
+    updateState = { ...updateState, status: 'error', message: error.message || 'Update failed.' };
+    sendUpdateState();
+  });
+}
+
 async function captureRoboImage(target, provider) {
   if (target == null || target === 'none') return null;
   if (!store.setting('roboScreenCapture'))
@@ -867,6 +980,7 @@ app.whenReady().then(() => {
   fs.mkdirSync(root, { recursive: true });
   store = new HubStore(root);
   register();
+  configureUpdater();
   try {
     registerGlobalHotkey();
   } catch (error) {
