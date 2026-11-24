@@ -10,10 +10,13 @@ import {
   House,
   LayoutGrid,
   Link2,
+  Newspaper,
   PanelTop,
   SlidersHorizontal,
   Sparkles,
+  Shirt,
   Timer,
+  UserRound,
 } from 'lucide-react';
 import './settings.css';
 
@@ -23,10 +26,13 @@ const sections = [
   ['ai', 'AI & Chat', Sparkles],
   ['apps', 'Apps', LayoutGrid],
   ['robo', 'Robo', Bot],
+  ['wardrobe', 'Wardrobe', Shirt],
+  ['account', 'Account', UserRound],
   ['general', 'General', SlidersHorizontal],
   ['notifications', 'Notifications', Bell],
   ['island', 'Island', PanelTop],
   ['focus', 'Focus', Timer],
+  ['news', 'News', Newspaper],
 ];
 const appLabels = {
   codex: 'Coding agents',
@@ -454,6 +460,51 @@ function Preferences({ section, data, run }) {
         </Group>
       </>
     );
+  if (section === 'wardrobe')
+    return (
+      <>
+        <Group title="Island look">
+          {select('islandSkin', 'Island skin', [
+            ['obsidian', 'Obsidian'],
+            ['slate', 'Slate'],
+            ['violet', 'Violet'],
+          ])}
+          {select('roboAppearance', 'Robo eyes', [
+            ['cyan', 'Cyan'],
+            ['violet', 'Violet'],
+            ['mint', 'Mint'],
+          ])}
+        </Group>
+        <p className="empty">More looks can be added as Queueglow grows.</p>
+      </>
+    );
+  if (section === 'account')
+    return (
+      <Group title="Local profile">
+        <Row
+          title="Queueglow Hub"
+          description="Independent desktop companion, version 0.1.0 preview."
+        />
+        <Row
+          title="Sign-in"
+          description="This preview stores preferences on this PC and does not require an account."
+        />
+        <Row title="License" description="MIT open-source license." />
+      </Group>
+    );
+  if (section === 'news')
+    return (
+      <Group title="Preview updates">
+        <Row
+          title="Queueglow Hub 0.1.0"
+          description="Compact island, Wi-Fi and Bluetooth controls, media playback, coding-agent activity, and a separate Settings window."
+        />
+        <Row
+          title="Privacy defaults"
+          description="Clipboard history and online lyrics are off until enabled. Agent questions are sent only when submitted."
+        />
+      </Group>
+    );
   if (section === 'notifications') {
     const disabled = !data.notificationsAvailable;
     const muted = disabled || !settings.notifications;
@@ -546,10 +597,13 @@ const descriptions = {
   ai: 'Manage the account Robo uses to answer questions.',
   apps: 'Choose which apps and shortcuts are visible on the island.',
   robo: 'Adjust how Robo looks and handles screen context.',
+  wardrobe: 'Personalize the island colors and Robo eyes.',
+  account: 'See how this local preview stores its settings.',
   general: 'Set Queueglow’s Windows, animation, and clipboard preferences.',
   notifications: 'Choose which agent events can show a Windows banner.',
   island: 'Adjust the island’s appearance and behavior.',
   focus: 'Manage interruptions while a focus timer is running.',
+  news: 'Read what is included in this Queueglow preview.',
 };
 
 function SettingsApp() {
