@@ -32,7 +32,17 @@ jobs:
         env:
           QUEUEGLOW_GOOGLE_CLIENT_ID: ${{ vars.QUEUEGLOW_GOOGLE_CLIENT_ID }}
 
-      - name: Create installer and publish update metadata
-        run: npx electron-builder --config scripts/electron-builder.config.cjs --win nsis --x64 --publish always
+      - name: Create installer and update metadata
+        run: npx electron-builder --config scripts/electron-builder.config.cjs --win nsis --x64 --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish one complete release
+        shell: pwsh
+        run: |
+          $assets = Get-ChildItem release/installer -File | ForEach-Object { $_.FullName }
+          if (-not ($assets | Where-Object { $_ -like '*latest.yml' })) {
+            throw 'electron-builder did not produce latest.yml.'
+          }
+          gh release create "$env:GITHUB_REF_NAME" $assets --title "$env:GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

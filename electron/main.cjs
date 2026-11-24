@@ -684,10 +684,11 @@ function register() {
         sendUpdateState();
       }
     } catch (error) {
+      console.error('Update check failed:', error);
       updateState = {
         ...updateState,
         status: 'error',
-        message: error.message || 'Could not check for updates.',
+        message: updaterErrorMessage(error),
       };
       sendUpdateState();
     }
@@ -705,10 +706,11 @@ function register() {
       sendUpdateState();
       await autoUpdater.downloadUpdate();
     } catch (error) {
+      console.error('Update download failed:', error);
       updateState = {
         ...updateState,
         status: 'error',
-        message: error.message || 'Could not download the update.',
+        message: updaterErrorMessage(error),
       };
       sendUpdateState();
     }
@@ -900,6 +902,15 @@ function sendUpdateState() {
   if (win && !win.isDestroyed()) win.webContents.send('updateStatus', updateState);
 }
 
+function updaterErrorMessage(error) {
+  const status = Number(error?.statusCode || error?.response?.statusCode || 0);
+  if (status === 404)
+    return 'Update files were not found on GitHub. The release may need to be repaired.';
+  if (status === 403) return 'GitHub temporarily blocked the update check. Try again later.';
+  if (status) return `Update check failed (HTTP ${status}). Try again later.`;
+  return 'Could not check for updates. Try again later.';
+}
+
 function configureUpdater() {
   const metadata = path.join(process.resourcesPath, 'app-update.yml');
   const supported = process.platform === 'win32' && app.isPackaged && fs.existsSync(metadata);
@@ -958,7 +969,8 @@ function configureUpdater() {
     sendUpdateState();
   });
   autoUpdater.on('error', (error) => {
-    updateState = { ...updateState, status: 'error', message: error.message || 'Update failed.' };
+    console.error('Auto-update error:', error);
+    updateState = { ...updateState, status: 'error', message: updaterErrorMessage(error) };
     sendUpdateState();
   });
 }
