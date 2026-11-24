@@ -12,7 +12,8 @@ Queueglow is an independent project inspired by a desktop workflow. It is not af
 - Local notes, agenda, file tray, and optional clipboard history
 - Codex and Claude Code hook events with one-time approval controls
 - Robo questions through the installed Codex or Claude Code CLI, with an optional OpenAI API key. Explicit screen attachments are supported by Codex and OpenAI.
-- A separate Settings window for providers, shortcuts, notifications, island appearance, and startup
+- A separate Settings window for providers, global island hotkeys, website and local app shortcuts, notifications, island appearance, and startup
+- Per-mode site, contact, and music preferences, plus an optional floating-glass island skin
 
 Every island tab fits without vertical scrolling. Longer lists and Robo answers use page buttons. Click the Wi-Fi and Bluetooth icons at the top left, then click a tile to switch that radio on or off; the tile shows the confirmed state.
 

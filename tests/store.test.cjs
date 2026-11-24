@@ -78,6 +78,23 @@ test('agent event history is idempotent and omits sensitive detail', () =>
     assert.equal(JSON.stringify(store.state()).includes('secret argument'), false);
   }));
 
+test('agent history keeps only explicitly safe activity detail', () =>
+  withStore((store) => {
+    const event = {
+      id: 'activity-safe',
+      provider: 'codex',
+      session_id: 'codex:demo',
+      kind: 'activity',
+      summary: 'Running tests - npm test',
+      detail: 'Test suite: npm test',
+      happened_at: '2026-11-22T00:00:00Z',
+    };
+    store.addAgentEvent(event);
+    assert.equal(store.state().events[0].detail, 'Test suite: npm test');
+    store.addAgentEvent({ ...event, id: 'activity-unsafe', detail: 'Unapproved activity detail' });
+    assert.equal(store.state().events[0].detail, '');
+  }));
+
 test('legacy agent history gains bounded final-response details', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'queueglow-store-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -117,13 +134,20 @@ test('settings validate and persist island, notification, and shortcut preferenc
   const store = new HubStore(root);
   try {
     assert.equal(store.setting('lyricsEnabled'), false);
+    assert.equal(store.setting('globalHotkey'), 'Control+Alt+Q');
     assert.deepEqual(store.setting('customShortcuts'), [null, null, null, null]);
     store.setSetting('islandSize', 'large');
+    store.setSetting('islandSkin', 'glass');
     store.setSetting('notificationPresentation', 'private');
     store.setSetting('focusGuard', true);
     store.setSetting('lyricsEnabled', true);
     store.setSetting('roboProvider', 'claude');
+    store.setSetting('globalHotkey', 'Control+Shift+Q');
+    assert.equal(store.setModeOption('work', 'blockSites', true), true);
+    assert.equal(store.state().modes.find((mode) => mode.id === 'work').block_sites, 1);
+    assert.throws(() => store.setModeOption('missing', 'quietContacts', true), /Unknown mode/);
     assert.throws(() => store.setSetting('roboProvider', 'unknown'), /Invalid setting/);
+    assert.throws(() => store.setSetting('globalHotkey', 'Alt+F4'), /Invalid setting/);
     assert.deepEqual(store.setShortcut(3, { label: '  Docs  ', url: 'HTTPS://example.com' }), {
       label: 'Docs',
       url: 'https://example.com/',
@@ -133,6 +157,18 @@ test('settings validate and persist island, notification, and shortcut preferenc
     assert.throws(() => store.setSetting('customShortcuts', []), /Invalid setting/);
     assert.throws(() => store.setting('constructor'), /Unknown setting/);
     assert.throws(() => store.setShortcut(4, null), /Invalid shortcut slot/);
+    const appPath = path.join(root, 'notepad.exe');
+    fs.writeFileSync(appPath, 'placeholder');
+    assert.deepEqual(store.setShortcut(2, { label: 'Notepad', type: 'program', path: appPath }), {
+      label: 'Notepad',
+      type: 'program',
+      path: appPath,
+    });
+    assert.throws(
+      () =>
+        store.setShortcut(2, { label: 'Bad', type: 'program', path: path.join(root, 'bad.txt') }),
+      /Windows app/,
+    );
     assert.throws(() => store.setShortcut(3, { label: '', url: 'https://example.com' }), /label/);
     for (const url of [
       'javascript:alert(1)',
@@ -149,15 +185,23 @@ test('settings validate and persist island, notification, and shortcut preferenc
   const reopened = new HubStore(root);
   try {
     assert.equal(reopened.setting('islandSize'), 'large');
+    assert.equal(reopened.setting('islandSkin'), 'glass');
     assert.equal(reopened.setting('notificationPresentation'), 'private');
     assert.equal(reopened.setting('focusGuard'), true);
     assert.equal(reopened.setting('lyricsEnabled'), true);
     assert.equal(reopened.setting('roboProvider'), 'claude');
+    assert.equal(reopened.setting('globalHotkey'), 'Control+Shift+Q');
     assert.deepEqual(reopened.setting('customShortcuts')[3], {
       label: 'Docs',
       url: 'https://example.com/',
     });
+    assert.deepEqual(reopened.setting('customShortcuts')[2], {
+      label: 'Notepad',
+      type: 'program',
+      path: path.join(root, 'notepad.exe'),
+    });
     reopened.setShortcut(3, null);
+    reopened.setShortcut(2, null);
     assert.deepEqual(reopened.setting('customShortcuts'), [null, null, null, null]);
   } finally {
     reopened.close();

@@ -98,6 +98,9 @@ function Get-ToolActivity($payload, [string]$name) {
     } elseif ($label.name) {
       $summary = "Running $subject - $($label.name)"
     }
+    if ($label.tests -and $name -ne 'PermissionRequest') {
+      $detail = Protect-Text "Test suite: $($label.name)" 240
+    }
     if ($name -eq 'PermissionRequest' -and $toolInput.command -is [string]) {
       $preview = Protect-Text $toolInput.command 4000
       if ($preview -ceq $toolInput.command.Trim()) { $detail = $preview }
@@ -111,6 +114,7 @@ function Get-ToolActivity($payload, [string]$name) {
     $summary = if ($ending) { 'Applied patch' } else { 'Applying patch' }
     if ($files) { $summary += ' - ' + (($files | Select-Object -First 3) -join ', ') }
     if (@($files).Count -gt 3) { $summary += ', ...' }
+    if ($files) { $detail = Protect-Text ("Files: " + (($files | Select-Object -First 4) -join ', ')) 500 }
   } else {
     $file = Get-DisplayPath $toolInput.file_path $payload.cwd
     if (!$file -and $tool -eq 'NotebookEdit') {
@@ -118,6 +122,7 @@ function Get-ToolActivity($payload, [string]$name) {
     }
     if ($file) {
       $summary = if ($failed) { "$tool failed - $file" } elseif ($ending) { "Finished $tool - $file" } else { "$tool - $file" }
+      $detail = Protect-Text "File: $file" 240
     }
   }
   if ($name -eq 'PermissionRequest' -and $description) { $summary = $description }

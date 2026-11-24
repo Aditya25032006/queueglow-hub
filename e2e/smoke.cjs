@@ -188,6 +188,11 @@ async function waitForBounds(app, width, height) {
     await win.getByRole('button', { name: 'Modes', exact: true }).click();
     await win.getByRole('button', { name: /Sleep/ }).waitFor();
     await win.getByRole('button', { name: /Game/ }).waitFor();
+    await win.getByLabel('Site blocking').check();
+    await win.waitForFunction(
+      async () => (await window.hub.state()).modes.find((mode) => mode.id === 'work').block_sites,
+    );
+    await win.getByLabel('Site blocking').uncheck();
     await win.getByRole('button', { name: 'More options' }).click();
     await win.getByRole('group', { name: 'App menu' }).waitFor();
     await win.getByRole('button', { name: 'Updates' }).waitFor();

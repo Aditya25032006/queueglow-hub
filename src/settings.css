@@ -221,6 +221,15 @@ fieldset {
 .shortcut-form label:nth-child(2) {
   flex: 1.5 1 145px;
 }
+.shortcut-program {
+  display: flex;
+  flex: 1.5 1 240px;
+  align-items: end;
+  gap: 8px;
+}
+.shortcut-program label {
+  min-width: 0;
+}
 .actions {
   display: flex;
   gap: 6px;

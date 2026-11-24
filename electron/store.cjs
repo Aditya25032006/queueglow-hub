@@ -31,6 +31,7 @@ const SETTING_DEFAULTS = {
   notifyCompletion: false,
   notifyErrors: true,
   notificationPresentation: 'summary',
+  globalHotkey: 'Control+Alt+Q',
   focusGuard: false,
   islandSize: 'standard',
   islandSkin: 'obsidian',
@@ -43,9 +44,10 @@ const SETTING_DEFAULTS = {
   customShortcuts: [null, null, null, null],
 };
 const CHOICES = {
+  globalHotkey: ['Control+Alt+Q', 'Control+Alt+Space', 'Control+Shift+Q', 'disabled'],
   notificationPresentation: ['summary', 'private'],
   islandSize: ['compact', 'standard', 'large'],
-  islandSkin: ['obsidian', 'slate', 'violet'],
+  islandSkin: ['obsidian', 'slate', 'violet', 'glass'],
   islandExpansion: ['hover', 'click'],
   restingIndicator: ['eyes', 'dot', 'none'],
   roboAppearance: ['cyan', 'violet', 'mint'],
@@ -130,26 +132,41 @@ class HubStore {
       throw new Error('Invalid shortcut slot');
     let entry = null;
     if (shortcut !== null) {
-      const { label, url } = shortcut || {};
+      const { label, url, type = 'website', path: programPath } = shortcut || {};
       if (typeof label !== 'string' || !label.trim() || label.trim().length > 32)
         throw new Error('Enter a shortcut label of 1 to 32 characters');
-      let target;
-      if (typeof url === 'string' && url.length <= 2048) {
-        try {
-          target = new URL(url.trim());
-        } catch {}
+      if (!['website', 'program'].includes(type))
+        throw new Error('Choose a website or Windows app');
+      if (type === 'program') {
+        if (
+          typeof programPath !== 'string' ||
+          !path.isAbsolute(programPath) ||
+          programPath.length > 2048 ||
+          !['.exe', '.lnk'].includes(path.extname(programPath).toLowerCase()) ||
+          !fs.existsSync(programPath) ||
+          !fs.statSync(programPath).isFile()
+        )
+          throw new Error('Choose an existing Windows app or shortcut');
+        entry = { label: label.trim(), type, path: programPath };
+      } else {
+        let target;
+        if (typeof url === 'string' && url.length <= 2048) {
+          try {
+            target = new URL(url.trim());
+          } catch {}
+        }
+        if (
+          !target ||
+          target.href.length > 2048 ||
+          target.protocol !== 'https:' ||
+          target.username ||
+          target.password ||
+          !/^https:\/\/[^/?#\\\s]/i.test(url.trim()) ||
+          /[\\\x00-\x20]/.test(url.trim())
+        )
+          throw new Error('Enter a complete HTTPS address without sign-in credentials');
+        entry = { label: label.trim(), url: target.href };
       }
-      if (
-        !target ||
-        target.href.length > 2048 ||
-        target.protocol !== 'https:' ||
-        target.username ||
-        target.password ||
-        !/^https:\/\/[^/?#\\\s]/i.test(url.trim()) ||
-        /[\\\x00-\x20]/.test(url.trim())
-      )
-        throw new Error('Enter a complete HTTPS address without sign-in credentials');
-      entry = { label: label.trim(), url: target.href };
     }
     const slots = [...this.setting('customShortcuts')];
     slots[index] = entry;
@@ -174,7 +191,14 @@ class HubStore {
       ? raw.kind
       : 'system';
     const summary = text(raw.summary, 180) || kind;
-    const detail = kind === 'done' && typeof raw.detail === 'string' ? text(raw.detail, 4000) : '';
+    const detail =
+      kind === 'done' && typeof raw.detail === 'string'
+        ? text(raw.detail, 4000)
+        : kind === 'activity' &&
+            typeof raw.detail === 'string' &&
+            /^(?:File|Files|Test suite): /.test(raw.detail)
+          ? text(raw.detail, 500)
+          : '';
     const occurredAt = /^\d{4}-\d\d-\d\dT/.test(String(raw.happened_at))
       ? String(raw.happened_at)
       : now();
@@ -322,6 +346,21 @@ class HubStore {
     this.db
       .prepare("UPDATE focus_sessions SET state='done',updated_at=? WHERE state='running'")
       .run(now());
+  }
+
+  setModeOption(modeId, option, enabled) {
+    const columns = {
+      blockSites: 'block_sites',
+      quietContacts: 'quiet_contacts',
+      keepMusic: 'keep_music',
+    };
+    const column = columns[option];
+    if (!column || typeof enabled !== 'boolean') throw new Error('Invalid mode preference');
+    const result = this.db
+      .prepare(`UPDATE mode_profiles SET ${column}=?,updated_at=? WHERE id=?`)
+      .run(enabled ? 1 : 0, now(), String(modeId));
+    if (!result.changes) throw new Error('Unknown mode');
+    return true;
   }
 
   hasActiveFocus() {

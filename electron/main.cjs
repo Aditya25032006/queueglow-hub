@@ -7,6 +7,7 @@ const {
   dialog,
   shell,
   Notification,
+  globalShortcut,
   safeStorage,
   desktopCapturer,
   powerMonitor,
@@ -49,6 +50,7 @@ let motionTimer = null,
 let lastCursorPoint = null,
   lastCursorMovementAt = Date.now();
 let shapedNotch = false;
+let activeGlobalHotkey = null;
 let roboBusy = false;
 let cliPaths;
 let cliCheckedAt = 0;
@@ -493,6 +495,21 @@ function openSettingsWindow(section = 'home') {
 }
 
 function setHubSetting(key, value) {
+  if (key === 'globalHotkey') {
+    const previousHotkey = store.setting(key);
+    const allowed = ['Control+Alt+Q', 'Control+Alt+Space', 'Control+Shift+Q', 'disabled'];
+    if (!allowed.includes(value))
+      throw new Error('Choose one of the available Queueglow shortcuts');
+    registerGlobalHotkey(value);
+    try {
+      store.setSetting(key, value);
+    } catch (error) {
+      registerGlobalHotkey(previousHotkey);
+      throw error;
+    }
+    emit();
+    return;
+  }
   store.setSetting(key, value);
   if (key === 'clipboardEnabled' && value) lastClip = clipboard.readText();
   if (key === 'islandSize') resetIslandBounds();
@@ -545,6 +562,14 @@ function registerSettings() {
     store.setShortcut(index, shortcut);
     emit();
   });
+  ipcMain.handle('settings:pickShortcutProgram', async (_event) => {
+    if (_event.sender !== settingsWin?.webContents) throw new Error('Invalid settings sender');
+    const result = await dialog.showOpenDialog(settingsWin, {
+      properties: ['openFile'],
+      filters: [{ name: 'Windows apps and shortcuts', extensions: ['exe', 'lnk'] }],
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
   settings('appVisible', (id, value) => {
     store.setAppVisible(id, value);
     emit();
@@ -565,11 +590,39 @@ function registerSettings() {
       throw new Error('Invalid shortcut slot');
     const shortcut = store.setting('customShortcuts')[index];
     if (!shortcut) throw new Error('Shortcut has not been configured');
+    if (shortcut.type === 'program') {
+      if (
+        !path.isAbsolute(shortcut.path) ||
+        !['.exe', '.lnk'].includes(path.extname(shortcut.path).toLowerCase()) ||
+        !fs.existsSync(shortcut.path)
+      )
+        throw new Error('The selected app is no longer available');
+      const error = await shell.openPath(shortcut.path);
+      if (error) throw new Error(error);
+      return true;
+    }
     const url = new URL(shortcut.url);
     if (url.protocol !== 'https:' || url.username || url.password)
       throw new Error('Invalid shortcut address');
     await shell.openExternal(url.href);
   });
+}
+
+function registerGlobalHotkey(accelerator = store.setting('globalHotkey')) {
+  const previous = activeGlobalHotkey;
+  if (activeGlobalHotkey) {
+    globalShortcut.unregister(activeGlobalHotkey);
+    activeGlobalHotkey = null;
+  }
+  if (accelerator === 'disabled') return;
+  const toggle = () => {
+    if (win && !win.isDestroyed()) resize(!targetFolded);
+  };
+  if (!globalShortcut.register(accelerator, toggle)) {
+    if (previous && globalShortcut.register(previous, toggle)) activeGlobalHotkey = previous;
+    throw new Error(`Could not register ${accelerator}; another app may use it`);
+  }
+  activeGlobalHotkey = accelerator;
 }
 
 function register() {
@@ -606,6 +659,11 @@ function register() {
     store.stopFocus();
     emit();
     emitSettingsActivity();
+    return true;
+  });
+  ipcMain.handle('modeOption', (_e, mode, option, enabled) => {
+    store.setModeOption(mode, option, enabled);
+    emit();
     return true;
   });
   ipcMain.handle('clipClear', () => {
@@ -809,6 +867,11 @@ app.whenReady().then(() => {
   fs.mkdirSync(root, { recursive: true });
   store = new HubStore(root);
   register();
+  try {
+    registerGlobalHotkey();
+  } catch (error) {
+    console.warn('Global shortcut unavailable:', error.message);
+  }
   openWindow();
   openTray();
   mediaBridge = new MediaBridge(process.resourcesPath, () => emit());
@@ -830,6 +893,7 @@ app.whenReady().then(() => {
 });
 app.on('before-quit', () => {
   quitting = true;
+  globalShortcut.unregisterAll();
 });
 app.on('window-all-closed', () => {
   mediaBridge?.stop();

@@ -553,13 +553,37 @@ export default function App() {
                 </button>
               ))}
             </div>
+            {(() => {
+              const mode = (state.modes || []).find((item) => item.id === selectedMode);
+              return (
+                <div className="mode-preferences" aria-label={`${selectedMode} preferences`}>
+                  {[
+                    ['blockSites', 'block_sites', 'Site blocking'],
+                    ['quietContacts', 'quiet_contacts', 'Quiet contacts'],
+                    ['keepMusic', 'keep_music', 'Keep music playing'],
+                  ].map(([option, key, label]) => (
+                    <label key={key}>
+                      <span>{label}</span>
+                      <input
+                        type="checkbox"
+                        aria-label={label}
+                        checked={!!mode?.[key]}
+                        onChange={(event) =>
+                          call(() =>
+                            window.hub.modeOption(selectedMode, option, event.target.checked),
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+              );
+            })()}
             <div className="mode-options">
-              <span>Site blocking</span>
-              <span className="muted">Coming later</span>
-              <span>Quiet contacts</span>
-              <span className="muted">Coming later</span>
-              <span>Keep music playing</span>
-              <span className="muted">Local player</span>
+              <span className="muted">
+                Preferences are saved per mode; app and contact blocking are not enabled in this
+                preview.
+              </span>
             </div>
             <button
               className="primary-button"
@@ -1374,7 +1398,8 @@ function AgentPage({ state, call, openSettings }) {
               ‹ Activity
             </button>
             <strong>
-              {selectedEvent.provider === 'claude' ? 'Claude Code' : 'Codex'} · final response
+              {selectedEvent.provider === 'claude' ? 'Claude Code' : 'Codex'} ·{' '}
+              {selectedEvent.kind === 'done' ? 'final response' : 'activity details'}
             </strong>
             <PagedText text={selectedEvent.detail} />
           </div>
@@ -1404,6 +1429,20 @@ function AgentPage({ state, call, openSettings }) {
                 </PagedItems>
               </div>
             )}
+            {state.jobs.some((job) => ['working', 'attention'].includes(job.state)) && (
+              <div className="agent-active" aria-label="Active coding agent jobs">
+                {state.jobs
+                  .filter((job) => ['working', 'attention'].includes(job.state))
+                  .slice(0, 2)
+                  .map((job) => (
+                    <div key={job.id}>
+                      <span className={`event-mark ${job.state}`} />
+                      <strong>{job.provider === 'claude' ? 'Claude Code' : 'Codex'}</strong>
+                      <small>{job.state === 'attention' ? 'Needs attention' : 'Working now'}</small>
+                    </div>
+                  ))}
+              </div>
+            )}
             {state.events.length ? (
               <PagedItems items={state.events} pageSize={2} className="event-feed">
                 {(event) => (
@@ -1423,7 +1462,7 @@ function AgentPage({ state, call, openSettings }) {
                       <button
                         className="event-open"
                         onClick={() => setSelectedEventId(event.id)}
-                        aria-label={`Read ${event.provider} final response`}
+                        aria-label={`Read ${event.provider} ${event.kind === 'done' ? 'final response' : 'activity details'}`}
                       >
                         Read
                       </button>

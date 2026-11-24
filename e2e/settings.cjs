@@ -58,6 +58,14 @@ const { moveSystemCursor } = require('./window.cjs');
       async () => (await window.queueglowSettings.state()).settings.roboProvider === 'codex',
     );
 
+    await island.evaluate(() => window.hub.openSettings('general'));
+    const hotkey = settings.getByLabel('Global island shortcut');
+    await hotkey.selectOption('Control+Shift+Q');
+    await settings.waitForFunction(
+      async () =>
+        (await window.queueglowSettings.state()).settings.globalHotkey === 'Control+Shift+Q',
+    );
+
     await settings
       .getByRole('navigation')
       .getByRole('button', { name: 'Island', exact: true })
@@ -93,6 +101,20 @@ const { moveSystemCursor } = require('./window.cjs');
       async () => (await window.hub.state()).settings.customShortcuts,
     );
     assert.deepEqual(shortcut, { label: 'Docs', url: 'https://example.com/docs' });
+    const programPath = path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'notepad.exe');
+    await settings.evaluate(
+      (executable) =>
+        window.queueglowSettings.shortcut(1, {
+          label: 'Notepad',
+          type: 'program',
+          path: executable,
+        }),
+      programPath,
+    );
+    const shortcuts = await island.evaluate(
+      async () => (await window.hub.state()).settings.customShortcuts,
+    );
+    assert.deepEqual(shortcuts[1], { label: 'Notepad', type: 'program', path: programPath });
     assert.equal(await island.evaluate(async () => (await window.hub.state()).folded), true);
 
     await settings.close();

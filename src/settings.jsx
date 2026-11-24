@@ -313,15 +313,31 @@ function AiSettings({ data, run }) {
 }
 
 function Shortcut({ index, shortcut, run }) {
+  const [programPath, setProgramPath] = useState(shortcut?.path || '');
+  const [type, setType] = useState(shortcut?.type || 'website');
   return (
     <form
       className="entry-form shortcut-form"
       onSubmit={(event) => {
         event.preventDefault();
         const fields = new FormData(event.currentTarget);
-        run(() => bridge.shortcut(index, { label: fields.get('label'), url: fields.get('url') }));
+        run(() =>
+          bridge.shortcut(
+            index,
+            type === 'program'
+              ? { label: fields.get('label'), type, path: programPath }
+              : { label: fields.get('label'), url: fields.get('url') },
+          ),
+        );
       }}
     >
+      <label>
+        Shortcut type
+        <select value={type} onChange={(event) => setType(event.target.value)}>
+          <option value="website">Website</option>
+          <option value="program">Windows app</option>
+        </select>
+      </label>
       <label>
         Shortcut {index + 1}
         <input
@@ -332,17 +348,41 @@ function Shortcut({ index, shortcut, run }) {
           placeholder="Label"
         />
       </label>
-      <label>
-        Web address
-        <input
-          name="url"
-          required
-          type="url"
-          maxLength={2048}
-          defaultValue={shortcut?.url}
-          placeholder="https://example.com"
-        />
-      </label>
+      {type === 'program' ? (
+        <div className="shortcut-program">
+          <label>
+            Windows app
+            <input
+              readOnly
+              required={!programPath}
+              value={programPath}
+              placeholder="Choose an .exe or .lnk file"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() =>
+              run(bridge.pickShortcutProgram).then((selected) => {
+                if (selected) setProgramPath(selected);
+              })
+            }
+          >
+            Browse
+          </button>
+        </div>
+      ) : (
+        <label>
+          Web address
+          <input
+            name="url"
+            required
+            type="url"
+            maxLength={2048}
+            defaultValue={shortcut?.url}
+            placeholder="https://example.com"
+          />
+        </label>
+      )}
       <button className="accent" type="submit">
         Save
       </button>
@@ -360,7 +400,7 @@ function Apps({ data, run }) {
     <>
       <Group title="Custom shortcuts">
         <p className="helper">
-          <Globe2 size={15} /> Add up to four HTTPS shortcuts to the island’s apps list.
+          <Globe2 size={15} /> Add up to four websites or Windows apps to the island’s apps list.
         </p>
         {data.settings.customShortcuts.map((shortcut, index) => (
           <Shortcut
@@ -433,6 +473,18 @@ function Preferences({ section, data, run }) {
     return (
       <>
         <Group title="Windows">
+          <Select
+            label="Global island shortcut"
+            description="Show or fold Queueglow from anywhere in Windows."
+            value={settings.globalHotkey}
+            change={(value) => run(() => bridge.set('globalHotkey', value))}
+            options={[
+              ['Control+Alt+Q', 'Ctrl + Alt + Q'],
+              ['Control+Alt+Space', 'Ctrl + Alt + Space'],
+              ['Control+Shift+Q', 'Ctrl + Shift + Q'],
+              ['disabled', 'Off'],
+            ]}
+          />
           <Toggle
             label="Launch at sign-in"
             value={data.launchOnLogin}
@@ -468,6 +520,7 @@ function Preferences({ section, data, run }) {
             ['obsidian', 'Obsidian'],
             ['slate', 'Slate'],
             ['violet', 'Violet'],
+            ['glass', 'Floating glass'],
           ])}
           {select('roboAppearance', 'Robo eyes', [
             ['cyan', 'Cyan'],
