@@ -55,7 +55,7 @@ let roboBusy = false;
 let cliPaths;
 let cliCheckedAt = 0;
 const MAX_EVENT = 64000;
-const EXPANDED = { width: 720, height: 330, zoom: 0.6 };
+const EXPANDED = { width: 660, height: 300, zoom: 0.64 };
 const FOLDED = { width: 108, height: 36 };
 const ISLAND_SCALE = { compact: 0.9, standard: 1, large: 1.12 };
 const SETTINGS_SECTIONS = new Set([

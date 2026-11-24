@@ -39,8 +39,8 @@ async function waitForBounds(app, width, height) {
     const foldedBounds = await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].getBounds(),
     );
-    assert.equal(foldedBounds.width, 720);
-    assert.equal(foldedBounds.height, 330);
+    assert.equal(foldedBounds.width, 660);
+    assert.equal(foldedBounds.height, 300);
     assert.equal(
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
       1,
@@ -62,10 +62,10 @@ async function waitForBounds(app, width, height) {
       'island-grow',
     );
     await win.waitForSelector('.shell.motion-idle');
-    const expandedBounds = await waitForBounds(app, 720, 330);
+    const expandedBounds = await waitForBounds(app, 660, 300);
     moveSystemCursor(expandedBounds.x + 100, expandedBounds.y + 100);
-    assert.equal(expandedBounds.width, 720);
-    assert.equal(expandedBounds.height, 330);
+    assert.equal(expandedBounds.width, 660);
+    assert.equal(expandedBounds.height, 300);
     assert.equal(
       await app.evaluate(
         ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].queueglowResizeEvents,
@@ -218,7 +218,7 @@ async function waitForBounds(app, width, height) {
     await hoverNotch(app);
     await win.waitForSelector('.shell.motion-expanding');
     await win.waitForSelector('.shell.motion-idle');
-    await waitForBounds(app, 720, 330);
+    await waitForBounds(app, 660, 300);
     await win.getByRole('button', { name: 'Quick controls', exact: true }).click();
     await win.locator('#system-volume').waitFor();
     await win.locator('#system-volume').waitFor({ state: 'visible' });
@@ -296,7 +296,7 @@ async function waitForBounds(app, width, height) {
     );
     console.log('Electron process memory', memory);
     console.log(
-      'E2E passed: compact 720×330 island, growing surface, fitted Home cards, zero native resizes, core flows',
+      'E2E passed: compact 660×300 island, growing surface, fitted Home cards, zero native resizes, core flows',
     );
   } finally {
     await app.close();
