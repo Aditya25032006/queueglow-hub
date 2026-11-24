@@ -4,7 +4,7 @@ const packageJson = require('../package.json');
 const build = require('../scripts/electron-builder.config.cjs');
 
 test('public Windows builds use an installable, update-enabled NSIS setup', () => {
-  assert.equal(packageJson.version, '0.1.1');
+  assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
   assert.match(packageJson.scripts['release:win'], /electron-builder/);
   assert.equal(build.appId, 'com.kausthub.queueglowhub');
   assert.equal(build.win.target[0].target, 'nsis');

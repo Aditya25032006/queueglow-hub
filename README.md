@@ -7,25 +7,31 @@ Queueglow stays out of the taskbar and is controlled from the tray menu.
 ## Features
 
 **At a glance**
+
 - Home clock, current track, focus timer, and coding-agent activity
 - Every tab fits without vertical scrolling. Longer lists and Robo answers use page buttons.
 
 **System controls**
+
 - Wi-Fi and Bluetooth on/off, network and device links, volume, brightness, battery status
 - To toggle a radio, click the Wi-Fi or Bluetooth icon at the top left, then click a tile. The tile shows the confirmed state.
 
 **Media**
+
 - Windows media artwork and playback controls
 - Local audio fallback and optional synced lyrics
 
 **Productivity**
+
 - Local notes, agenda, file tray, and optional clipboard history
 
 **Coding agents**
+
 - Codex and Claude Code hook events with one-time approval controls
 - Robo: ask questions through the installed Codex or Claude Code CLI, or an optional OpenAI API key. Explicit screen attachments work with Codex and OpenAI.
 
 **Customization**
+
 - Separate Settings window for providers, global island hotkeys, website and local app shortcuts, notifications, island appearance, and startup
 - Per-mode site, contact, and music preferences
 - Optional floating-glass island skin
@@ -47,12 +53,12 @@ Existing portable-folder users need to run the installer once to switch to the i
 
 Queueglow has no telemetry. Local data lives in `%LOCALAPPDATA%\Queueglow`.
 
-| Feature | Default | What leaves your PC |
-|---|---|---|
-| Clipboard history | Off | Nothing |
-| Online lyrics | Off | Track title and artist go to [LRCLIB](https://lrclib.net/docs) once enabled; results are cached for the session |
-| Robo | Only on submit | Your question goes to the selected provider. An explicitly attached screen or window image is sent with it |
-| OpenAI API key | Optional | Stored with Windows encryption |
+| Feature           | Default        | What leaves your PC                                                                                             |
+| ----------------- | -------------- | --------------------------------------------------------------------------------------------------------------- |
+| Clipboard history | Off            | Nothing                                                                                                         |
+| Online lyrics     | Off            | Track title and artist go to [LRCLIB](https://lrclib.net/docs) once enabled; results are cached for the session |
+| Robo              | Only on submit | Your question goes to the selected provider. An explicitly attached screen or window image is sent with it      |
+| OpenAI API key    | Optional       | Stored with Windows encryption                                                                                  |
 
 ## Build from source
 
@@ -80,6 +86,7 @@ node e2e/layout.cjs
 ```
 
 Additional tests:
+
 - `node e2e/robo.cjs` submits one short question through an installed, signed-in Codex CLI.
 - `node e2e/radios.cjs` checks radio status. Set `QUEUEGLOW_TEST_RADIO_TOGGLE=1` to switch Bluetooth off and back on during the test.
 
