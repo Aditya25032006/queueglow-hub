@@ -521,14 +521,44 @@ function Preferences({ section, data, run }) {
             ['slate', 'Slate'],
             ['violet', 'Violet'],
             ['glass', 'Floating glass'],
+            ['mint', 'Mint dusk'],
+            ['rose', 'Rosewood'],
+            ['sunset', 'Sunset'],
+            ['wallpaper', 'Wallpaper colors'],
           ])}
+          {toggle(
+            'wallpaperSync',
+            'Sync with Windows wallpaper',
+            'Sample the current wallpaper locally and tint the island. Refreshes every 10 minutes.',
+          )}
           {select('roboAppearance', 'Robo eyes', [
             ['cyan', 'Cyan'],
             ['violet', 'Violet'],
             ['mint', 'Mint'],
           ])}
         </Group>
-        <p className="empty">More looks can be added as Queueglow grows.</p>
+        <Group title="Clock">
+          {select('clockFormat', 'Time format', [
+            ['12h', '12-hour'],
+            ['24h', '24-hour'],
+          ])}
+          {select('clockSize', 'Home clock size', [
+            ['compact', 'Compact'],
+            ['standard', 'Standard'],
+            ['large', 'Large'],
+          ])}
+          {select('clockStyle', 'Clock typography', [
+            ['digital', 'Digital mono'],
+            ['rounded', 'Rounded'],
+          ])}
+          {toggle('clockLeadingZero', 'Pad the hour', 'Show 09:30 instead of 9:30.')}
+          {toggle(
+            'clockShowSeconds',
+            'Show seconds',
+            'Add seconds to the top clock and home clock.',
+          )}
+          {toggle('showDate', 'Show date', 'Show the weekday and date in the island header.')}
+        </Group>
       </>
     );
   if (section === 'account')
@@ -536,11 +566,11 @@ function Preferences({ section, data, run }) {
       <Group title="Local profile">
         <Row
           title="Queueglow Hub"
-          description="Independent desktop companion, version 0.1.0 preview."
+          description={`Independent desktop companion, version ${data.version}.`}
         />
         <Row
           title="Sign-in"
-          description="This preview stores preferences on this PC and does not require an account."
+          description="Google inbox access is optional and read-only. Its token is encrypted and stored on this PC."
         />
         <Row title="License" description="MIT open-source license." />
       </Group>
@@ -549,8 +579,8 @@ function Preferences({ section, data, run }) {
     return (
       <Group title="Preview updates">
         <Row
-          title="Queueglow Hub 0.1.0"
-          description="Compact island, Wi-Fi and Bluetooth controls, media playback, coding-agent activity, and a separate Settings window."
+          title={`Queueglow Hub ${data.version}`}
+          description="Compact island, quick controls, media playback, coding-agent activity, and a separate Settings window."
         />
         <Row
           title="Privacy defaults"
@@ -609,7 +639,17 @@ function Preferences({ section, data, run }) {
             ['obsidian', 'Obsidian'],
             ['slate', 'Slate'],
             ['violet', 'Violet'],
+            ['glass', 'Floating glass'],
+            ['mint', 'Mint dusk'],
+            ['rose', 'Rosewood'],
+            ['sunset', 'Sunset'],
+            ['wallpaper', 'Wallpaper colors'],
           ])}
+          {toggle(
+            'wallpaperSync',
+            'Sync colors with wallpaper',
+            'Sample your current Windows wallpaper locally and adapt the island tint.',
+          )}
           {select('restingIndicator', 'When folded', [
             ['eyes', 'Eyes'],
             ['dot', 'Dot'],
@@ -784,3 +824,4 @@ function SettingsApp() {
 }
 
 createRoot(document.getElementById('root')).render(<SettingsApp />);
+

@@ -22,8 +22,10 @@ const { autoUpdater } = require('electron-updater');
 const { HubStore } = require('./store.cjs');
 const hooks = require('./hooks.cjs');
 const { MediaBridge } = require('./media.cjs');
+const { GmailBridge } = require('./gmail.cjs');
 const { discoverCli, chooseProvider, askCli, clipAnswer } = require('./robo-cli.cjs');
 const { DURATION_MS, IDLE_SECONDS, gaze } = require('./island-motion.cjs');
+const { wallpaperAccent } = require('./wallpaper.cjs');
 
 if (process.env.QUEUEGLOW_SOFTWARE_RENDER === '1') app.disableHardwareAcceleration();
 
@@ -36,6 +38,7 @@ let store,
   settingsWin,
   tray,
   mediaBridge,
+  gmailBridge,
   folded = true,
   targetFolded = true,
   motion = 'idle',
@@ -54,6 +57,7 @@ let shapedNotch = false;
 let activeGlobalHotkey = null;
 let roboBusy = false;
 let updateState = { supported: false, status: 'idle', version: app.getVersion() };
+let wallpaperColor = null;
 let cliPaths;
 let cliCheckedAt = 0;
 const MAX_EVENT = 64000;
@@ -121,6 +125,7 @@ function emit(extra = {}) {
       systemMedia: mediaBridge?.media || null,
       volume: mediaBridge?.volume ?? null,
       system: mediaBridge?.system || null,
+      wallpaperColor: store.setting('wallpaperSync') ? wallpaperColor : null,
       roboCapabilities: roboCapabilities(),
       folded,
       motion,
@@ -138,6 +143,7 @@ function current() {
     systemMedia: mediaBridge?.media || null,
     volume: mediaBridge?.volume ?? null,
     system: mediaBridge?.system || null,
+    wallpaperColor: store.setting('wallpaperSync') ? wallpaperColor : null,
     roboCapabilities: roboCapabilities(),
     folded,
     motion,
@@ -429,6 +435,7 @@ function currentSettings() {
   const robo = roboProviders(true);
   return {
     settings: state.settings,
+    version: app.getVersion(),
     apps: state.apps,
     activity: settingsActivity(state),
     connections,
@@ -513,11 +520,22 @@ function setHubSetting(key, value) {
     return;
   }
   store.setSetting(key, value);
+  if (key === 'islandSkin') {
+    store.setSetting('wallpaperSync', value === 'wallpaper');
+    wallpaperColor = null;
+    if (value === 'wallpaper') refreshWallpaperColor();
+  }
   if (key === 'clipboardEnabled' && value) lastClip = clipboard.readText();
   if (key === 'islandSize') resetIslandBounds();
   if ((key === 'islandSize' || key === 'islandExpansion') && targetFolded && motion === 'idle')
     islandInput(true);
   if (key === 'lyricsEnabled') mediaBridge?.setLyricsEnabled?.(value);
+  if (key === 'wallpaperSync') {
+    if (!value && store.setting('islandSkin') === 'wallpaper')
+      store.setSetting('islandSkin', 'obsidian');
+    wallpaperColor = null;
+    if (value) refreshWallpaperColor();
+  }
   emit();
 }
 
@@ -639,6 +657,21 @@ function register() {
     }
   });
   ipcMain.handle('state', current);
+  const gmailHandler = (name, action) =>
+    ipcMain.handle(`gmail:${name}`, async (event) => {
+      if (event.sender !== win?.webContents) throw new Error('Invalid Gmail request');
+      return action();
+    });
+  gmailHandler('state', () => gmailBridge.state());
+  gmailHandler('connect', () => gmailBridge.connect());
+  gmailHandler('refresh', () => gmailBridge.refresh());
+  gmailHandler('disconnect', () => gmailBridge.disconnect());
+  ipcMain.handle('gmail:open', (event, id) => {
+    if (event.sender !== win?.webContents) throw new Error('Invalid Gmail request');
+    if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id))
+      throw new Error('Invalid Gmail message');
+    return shell.openExternal(`https://mail.google.com/mail/u/0/#all/${id}`);
+  });
   ipcMain.handle('updates:state', () => updateState);
   ipcMain.handle('updates:check', async () => {
     if (!updateState.supported) return updateState;
@@ -874,12 +907,14 @@ function configureUpdater() {
     supported,
     status: 'idle',
     version: app.getVersion(),
-    message: supported ? '' : 'Install the Queueglow setup once to enable in-app updates.',
+    message: supported
+      ? ''
+      : 'In-app updates are available after installing Queueglow for Windows.',
   };
   if (!supported) return;
 
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('checking-for-update', () => {
     updateState = { ...updateState, status: 'checking', message: 'Checking for updates…' };
     sendUpdateState();
@@ -887,9 +922,10 @@ function configureUpdater() {
   autoUpdater.on('update-available', (info) => {
     updateState = {
       ...updateState,
-      status: 'available',
       version: info.version,
-      message: `Version ${info.version} is available.`,
+      status: 'downloading',
+      percent: 0,
+      message: `Downloading version ${info.version} in the background.`,
     };
     sendUpdateState();
   });
@@ -917,7 +953,7 @@ function configureUpdater() {
       status: 'downloaded',
       version: info.version,
       percent: 100,
-      message: `Version ${info.version} is ready to install.`,
+      message: `Version ${info.version} is ready. It will install when you next quit Queueglow.`,
     };
     sendUpdateState();
   });
@@ -925,6 +961,15 @@ function configureUpdater() {
     updateState = { ...updateState, status: 'error', message: error.message || 'Update failed.' };
     sendUpdateState();
   });
+}
+
+async function refreshWallpaperColor() {
+  if (!store?.setting('wallpaperSync')) return;
+  const nextColor = await wallpaperAccent();
+  if (nextColor && nextColor !== wallpaperColor) {
+    wallpaperColor = nextColor;
+    emit();
+  }
 }
 
 async function captureRoboImage(target, provider) {
@@ -979,6 +1024,22 @@ async function askRoboOpenAI(prompt, screenshot) {
 app.whenReady().then(() => {
   fs.mkdirSync(root, { recursive: true });
   store = new HubStore(root);
+  let googleClientId = '';
+  try {
+    googleClientId = JSON.parse(
+      fs.readFileSync(path.join(__dirname, '..', 'dist', 'queueglow-google-oauth.json'), 'utf8'),
+    ).clientId;
+  } catch {}
+  gmailBridge = new GmailBridge({
+    clientId: googleClientId,
+    file: path.join(root, 'gmail-session.bin'),
+    safeStorage,
+    openExternal: (url) => shell.openExternal(url),
+    onChange: (state) => {
+      if (win && !win.isDestroyed()) win.webContents.send('gmailState', state);
+    },
+  });
+  gmailBridge.initialize().catch(() => {});
   register();
   configureUpdater();
   try {
@@ -988,6 +1049,12 @@ app.whenReady().then(() => {
   }
   openWindow();
   openTray();
+  if (store.setting('wallpaperSync')) refreshWallpaperColor();
+  setInterval(refreshWallpaperColor, 10 * 60 * 1000);
+  if (updateState.supported) {
+    setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 12000);
+    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+  }
   mediaBridge = new MediaBridge(process.resourcesPath, () => emit());
   mediaBridge.setLyricsEnabled?.(store.setting('lyricsEnabled'));
   mediaBridge.start();
@@ -1014,3 +1081,4 @@ app.on('window-all-closed', () => {
   store?.close();
   app.quit();
 });
+

@@ -21,6 +21,10 @@ Queueglow stays out of the taskbar and is controlled from the tray menu.
 - Windows media artwork and playback controls
 - Local audio fallback and optional synced lyrics
 
+**Mail**
+
+- Optional Gmail sign-in using read-only inbox access; recent sender, subject, and short previews only
+
 **Productivity**
 
 - Local notes, agenda, file tray, and optional clipboard history
@@ -59,12 +63,13 @@ Before enabling this for public users, create a Google Cloud Desktop OAuth clien
 
 Queueglow has no telemetry. Local data lives in `%LOCALAPPDATA%\Queueglow`.
 
-| Feature           | Default        | What leaves your PC                                                                                             |
-| ----------------- | -------------- | --------------------------------------------------------------------------------------------------------------- |
-| Clipboard history | Off            | Nothing                                                                                                         |
-| Online lyrics     | Off            | Track title and artist go to [LRCLIB](https://lrclib.net/docs) once enabled; results are cached for the session |
-| Robo              | Only on submit | Your question goes to the selected provider. An explicitly attached screen or window image is sent with it      |
-| OpenAI API key    | Optional       | Stored with Windows encryption                                                                                  |
+| Feature           | Default         | What leaves your PC                                                                                             |
+| ----------------- | --------------- | --------------------------------------------------------------------------------------------------------------- |
+| Clipboard history | Off             | Nothing                                                                                                         |
+| Online lyrics     | Off             | Track title and artist go to [LRCLIB](https://lrclib.net/docs) once enabled; results are cached for the session |
+| Robo              | Only on submit  | Your question goes to the selected provider. An explicitly attached screen or window image is sent with it      |
+| OpenAI API key    | Optional        | Stored with Windows encryption                                                                                  |
+| Gmail             | Only on connect | OAuth requests read-only access. Up to five short inbox previews stay in memory; the token is encrypted locally |
 
 ## Build from source
 
@@ -101,7 +106,8 @@ Additional tests:
 ## Known limitations
 
 - **Memory use:** The Electron build is heavier than a native utility. A full island smoke test measured about 507 MB combined working set and 304 MB private bytes on the test PC. `QUEUEGLOW_SOFTWARE_RENDER=1` lowers GPU memory but may make animation less smooth.
-- **Not implemented:** Gmail, Google Calendar, microphone input, and enforced app or site blocking.
+- **Not implemented:** Google Calendar, microphone input, and enforced app or site blocking.
+- **Gmail setup:** The app owner must configure the public Google OAuth client ID and complete Google's restricted-scope verification before public Gmail sign-in is enabled.
 - **Untested:** Robo image attachments are implemented but have not completed a live provider test.
 
 ## Contributing

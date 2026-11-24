@@ -29,8 +29,11 @@ jobs:
 
       - name: Build renderer
         run: npm run build
+        env:
+          QUEUEGLOW_GOOGLE_CLIENT_ID: ${{ vars.QUEUEGLOW_GOOGLE_CLIENT_ID }}
 
       - name: Create installer and publish update metadata
         run: npx electron-builder --config scripts/electron-builder.config.cjs --win nsis --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

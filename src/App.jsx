@@ -76,7 +76,13 @@ const fmt = (seconds) =>
     .padStart(2, '0')}:${Math.floor(Math.max(0, seconds) % 60)
     .toString()
     .padStart(2, '0')}`;
-const clock = (date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const clock = (date, settings = {}) =>
+  date.toLocaleTimeString([], {
+    hour: settings.clockLeadingZero ? '2-digit' : 'numeric',
+    minute: '2-digit',
+    second: settings.clockShowSeconds ? '2-digit' : undefined,
+    hour12: settings.clockFormat !== '24h',
+  });
 const day = (date) =>
   `${date.toLocaleDateString([], { weekday: 'short' })} ${date.getDate()} ${date.toLocaleDateString([], { month: 'short' })}`.toUpperCase();
 const initial = {
@@ -112,6 +118,14 @@ export default function App() {
   const [error, setError] = useState(''),
     [success, setSuccess] = useState('');
   const [updateState, setUpdateState] = useState({ supported: false, status: 'idle', message: '' });
+  const [gmail, setGmail] = useState({
+    configured: false,
+    connected: false,
+    loading: false,
+    email: '',
+    messages: [],
+    error: '',
+  });
   const [duration, setDuration] = useState(25),
     [selectedMode, setSelectedMode] = useState('work');
   const [note, setNote] = useState(''),
@@ -169,6 +183,14 @@ export default function App() {
       }
     });
   }, []);
+  useEffect(() => window.hub.onGmail(setGmail), []);
+  useEffect(() => {
+    if (page === 'mail')
+      window.hub
+        .gmailState()
+        .then(setGmail)
+        .catch((e) => setGmail((s) => ({ ...s, error: e.message })));
+  }, [page]);
   useEffect(() => {
     window.hub
       .updateState()
@@ -257,13 +279,13 @@ export default function App() {
     setSuccess('');
     try {
       if (!updateState.supported) {
-        setSuccess(
-          updateState.message || 'Install the Queueglow setup once to enable in-app updates.',
-        );
+        setSuccess(updateState.message || 'In-app updates are available in the Windows install.');
       } else if (updateState.status === 'downloaded') {
         await window.hub.installUpdate();
       } else if (updateState.status === 'available') {
-        await window.hub.downloadUpdate();
+        setSuccess(
+          'The update is downloading in the background. It installs when you quit Queueglow.',
+        );
       } else {
         const next = await window.hub.checkForUpdates();
         setUpdateState(next);
@@ -298,7 +320,8 @@ export default function App() {
 
   return (
     <div
-      className={`shell theme-${page} skin-${state.settings?.islandSkin || 'obsidian'} indicator-${state.settings?.restingIndicator || 'eyes'} robo-${state.settings?.roboAppearance || 'cyan'} motion-${state.folded ? 'folded' : state.motion || 'idle'}`}
+      className={`shell theme-${page} skin-${state.settings?.wallpaperSync ? 'wallpaper' : state.settings?.islandSkin || 'obsidian'} indicator-${state.settings?.restingIndicator || 'eyes'} robo-${state.settings?.roboAppearance || 'cyan'} motion-${state.folded ? 'folded' : state.motion || 'idle'}`}
+      style={state.wallpaperColor ? { '--wallpaper-accent': state.wallpaperColor } : undefined}
       onMouseEnter={cancelFold}
       onMouseLeave={scheduleFold}
     >
@@ -324,7 +347,7 @@ export default function App() {
             }}
             call={call}
           />
-          <span className="date mono">{day(now)}</span>
+          {state.settings?.showDate !== false && <span className="date mono">{day(now)}</span>}
         </div>
         <span className="topcenter">QUEUEGLOW</span>
         <div className="header-right">
@@ -344,7 +367,9 @@ export default function App() {
                 : `${state.system.batteryPercent}%`}
             </span>
           </button>
-          <span className="time mono">{clock(now)}</span>
+          <span className={`time ${state.settings?.clockStyle === 'rounded' ? '' : 'mono'}`}>
+            {clock(now, state.settings)}
+          </span>
           <button
             className="icon-button"
             aria-label="More options"
@@ -395,9 +420,9 @@ export default function App() {
               {updateState.status === 'downloaded'
                 ? 'Restart to update'
                 : updateState.status === 'available'
-                  ? `Download ${updateState.version}`
+                  ? 'Updating in background…'
                   : updateState.status === 'downloading'
-                    ? `Downloading ${updateState.percent || 0}%`
+                    ? `Updating ${updateState.percent || 0}%`
                     : updateState.status === 'checking'
                       ? 'Checking…'
                       : updateState.status === 'error'
@@ -814,14 +839,72 @@ export default function App() {
           />
         )}
         {page === 'mail' && (
-          <section className="center-page">
-            <Mail size={60} />
-            <h1>Mail at a glance</h1>
-            <p>
-              Google Mail connection is not available in this build. Your inbox stays in your mail
-              app.
-            </p>
-            <span className="muted">No account is connected and no messages are read.</span>
+          <section className="mail-page">
+            <div className="mail-heading">
+              <div>
+                <div className="eyebrow">GOOGLE MAIL · READ ONLY</div>
+                <h1>{gmail.connected ? gmail.email : 'Mail at a glance'}</h1>
+              </div>
+              <div className="mail-actions">
+                {gmail.connected ? (
+                  <>
+                    <button
+                      className="soft-button"
+                      onClick={() => window.hub.gmailRefresh()}
+                      disabled={gmail.loading}
+                    >
+                      {gmail.loading ? 'Refreshing…' : 'Refresh'}
+                    </button>
+                    <button
+                      className="soft-button"
+                      onClick={() => window.hub.gmailDisconnect()}
+                      disabled={gmail.loading}
+                    >
+                      Disconnect
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="soft-button"
+                    onClick={() =>
+                      window.hub
+                        .gmailConnect()
+                        .then(setGmail)
+                        .catch((e) => setGmail((s) => ({ ...s, loading: false, error: e.message })))
+                    }
+                    disabled={!gmail.configured || gmail.loading}
+                  >
+                    {gmail.loading ? 'Opening Google…' : 'Connect Google'}
+                  </button>
+                )}
+              </div>
+            </div>
+            {gmail.error && (
+              <p className="mail-error" role="alert">
+                {gmail.error}
+              </p>
+            )}
+            {!gmail.configured && (
+              <p className="mail-hint">
+                Gmail sign-in will be available when the app publisher finishes Google OAuth setup.
+              </p>
+            )}
+            {gmail.connected && gmail.messages.length === 0 && !gmail.loading && (
+              <p className="mail-hint">Your inbox is clear.</p>
+            )}
+            <div className="mail-list" aria-label="Recent inbox messages">
+              {gmail.messages.slice(0, 3).map((message) => (
+                <button
+                  key={message.id}
+                  className="mail-message"
+                  onClick={() => window.hub.gmailOpen(message.id)}
+                >
+                  <span className="mail-sender">{message.from || 'Unknown sender'}</span>
+                  <strong>{message.subject}</strong>
+                  <small>{message.snippet}</small>
+                </button>
+              ))}
+            </div>
           </section>
         )}
         {page === 'all' && (
@@ -1110,7 +1193,11 @@ function MusicPage({
     <section className="music-page">
       <div className="album-placeholder">
         {system?.artwork ? (
-          <img className="album-art" src={system.artwork} alt={`${title} cover art`} />
+          <img
+            className="music-art-image album-art"
+            src={system.artwork}
+            alt={`${title} cover art`}
+          />
         ) : (
           <Music2 size={96} />
         )}
@@ -1370,7 +1457,11 @@ function AgendaPage({
 function HomePage({ now, jobsToday, state, remaining, navigate, play }) {
   return (
     <section className="home-page">
-      <div className="hero-clock mono">{clock(now).replace(/\s?(AM|PM)$/i, '')}</div>
+      <div
+        className={`hero-clock ${state.settings?.clockStyle === 'rounded' ? '' : 'mono'} clock-${state.settings?.clockSize || 'standard'}`}
+      >
+        {clock(now, state.settings).replace(/\s?(AM|PM)$/i, '')}
+      </div>
       <div className="home-cards">
         <button onClick={() => navigate('codex')}>
           <span className="card-number mono">{jobsToday}</span>
@@ -1378,17 +1469,21 @@ function HomePage({ now, jobsToday, state, remaining, navigate, play }) {
         </button>
         <button onClick={play}>
           {state.systemMedia?.artwork ? (
-            <img className="home-cover" src={state.systemMedia.artwork} alt="Current track cover" />
+            <img
+              className="music-art-image home-cover"
+              src={state.systemMedia.artwork}
+              alt="Current track cover"
+            />
           ) : (
             <Music2 size={29} />
           )}
-          <span>
+          <span className="home-track-copy">
             <strong>{state.systemMedia?.title || state.audio[0]?.name || 'Music'}</strong>
             <small>
               {state.systemMedia
                 ? state.systemMedia.playing
-                  ? 'Playing'
-                  : 'Paused'
+                  ? `${state.systemMedia.artist || 'Windows media'} · Playing`
+                  : `${state.systemMedia.artist || 'Windows media'} · Paused`
                 : state.audio.length
                   ? 'Ready to play'
                   : 'Add your songs'}
@@ -1526,3 +1621,4 @@ function AgentPage({ state, call, openSettings }) {
     </section>
   );
 }
+

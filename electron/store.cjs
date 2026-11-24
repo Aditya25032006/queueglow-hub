@@ -35,6 +35,13 @@ const SETTING_DEFAULTS = {
   focusGuard: false,
   islandSize: 'standard',
   islandSkin: 'obsidian',
+  wallpaperSync: false,
+  clockFormat: '12h',
+  clockShowSeconds: false,
+  clockSize: 'standard',
+  clockStyle: 'digital',
+  clockLeadingZero: false,
+  showDate: true,
   islandExpansion: 'hover',
   restingIndicator: 'eyes',
   roboAppearance: 'cyan',
@@ -47,7 +54,10 @@ const CHOICES = {
   globalHotkey: ['Control+Alt+Q', 'Control+Alt+Space', 'Control+Shift+Q', 'disabled'],
   notificationPresentation: ['summary', 'private'],
   islandSize: ['compact', 'standard', 'large'],
-  islandSkin: ['obsidian', 'slate', 'violet', 'glass'],
+  islandSkin: ['obsidian', 'slate', 'violet', 'glass', 'mint', 'rose', 'sunset', 'wallpaper'],
+  clockFormat: ['12h', '24h'],
+  clockSize: ['compact', 'standard', 'large'],
+  clockStyle: ['digital', 'rounded'],
   islandExpansion: ['hover', 'click'],
   restingIndicator: ['eyes', 'dot', 'none'],
   roboAppearance: ['cyan', 'violet', 'mint'],
@@ -430,3 +440,4 @@ class HubStore {
 }
 
 module.exports = { HubStore, APP_IDS, MAX_TRAY_FILE };
+
