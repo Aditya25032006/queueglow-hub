@@ -43,11 +43,17 @@ Queueglow stays out of the taskbar and is controlled from the tray menu.
 
 ## Quick start
 
-1. Download and run `QueueglowHub-Setup` from [Releases](../../releases). The per-user installer puts the app and its runtime files together and adds Start menu and optional desktop shortcuts.
+1. Download and run `QueueglowHub-Setup` from [Releases](../../releases) for the first install. The per-user installer puts the app and its runtime files together and adds Start menu and optional desktop shortcuts.
 2. Open Queueglow from the Start menu. It stays in the system tray when its window is closed.
-3. Use the `Updates` menu to check GitHub Releases, download an update, and choose **Restart to update** to install it.
+3. Queueglow checks for updates in the background, downloads them while you work, and installs them the next time you quit. Use **Updates** → **Restart to update** to apply one immediately.
 
-Existing portable-folder users need to run the installer once to switch to the install type that supports in-app updates; their Queueglow data stays in `%LOCALAPPDATA%\Queueglow`. Windows may warn because the app is unsigned.
+Existing portable-folder users need to run the installer once to switch to the install type that supports in-app updates; their Queueglow data stays in `%LOCALAPPDATA%\Queueglow`. After that one-time move, normal updates do not require downloading or running another setup. Windows may warn because the app is unsigned.
+
+## Gmail sign-in configuration
+
+The Mail tab uses Google's installed-app OAuth flow in the system browser and requests only `gmail.readonly`. Queueglow keeps OAuth tokens encrypted with Windows secure storage, loads up to five inbox previews, and does not download message bodies. The published Windows release workflow reads the public OAuth client ID from the `QUEUEGLOW_GOOGLE_CLIENT_ID` repository variable; the client ID is not a secret and must be set by the repository owner. Local builds can use the same environment variable.
+
+Before enabling this for public users, create a Google Cloud Desktop OAuth client, enable the Gmail API, configure the OAuth consent screen, and submit the restricted Gmail read scope for Google's verification. OAuth apps left in Testing have a 100-test-user cap and Gmail refresh tokens expire after seven days. See [Google's desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app), [Gmail scope definitions](https://developers.google.com/workspace/gmail/api/auth/scopes), and [restricted-scope verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification).
 
 ## Privacy
 
@@ -105,3 +111,4 @@ Open an issue for reproducible bugs. Include your Windows version, display scale
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
