@@ -297,4 +297,3 @@ class GmailBridge {
 }
 
 module.exports = { GmailBridge, SCOPE };
-

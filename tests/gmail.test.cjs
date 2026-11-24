@@ -44,4 +44,3 @@ test('desktop sign-in uses a random loopback callback and PKCE S256', async () =
   assert.equal(result.code, 'test-code');
   assert.ok(result.verifier.length >= 43);
 });
-

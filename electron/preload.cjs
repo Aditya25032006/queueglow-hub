@@ -75,4 +75,3 @@ if (process.argv.includes('--queueglow-settings')) {
 } else {
   contextBridge.exposeInMainWorld('hub', hub);
 }
-

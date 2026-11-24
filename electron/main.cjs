@@ -1081,4 +1081,3 @@ app.on('window-all-closed', () => {
   store?.close();
   app.quit();
 });
-

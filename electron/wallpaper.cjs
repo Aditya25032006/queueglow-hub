@@ -31,4 +31,3 @@ function wallpaperAccent() {
 }
 
 module.exports = { wallpaperAccent };
-

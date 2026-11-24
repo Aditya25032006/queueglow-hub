@@ -36,4 +36,3 @@ jobs:
         run: npx electron-builder --config scripts/electron-builder.config.cjs --win nsis --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

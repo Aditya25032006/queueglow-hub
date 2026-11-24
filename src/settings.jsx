@@ -824,4 +824,3 @@ function SettingsApp() {
 }
 
 createRoot(document.getElementById('root')).render(<SettingsApp />);
-

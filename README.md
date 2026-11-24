@@ -117,4 +117,3 @@ Open an issue for reproducible bugs. Include your Windows version, display scale
 ## License
 
 MIT. See [LICENSE](LICENSE).
-

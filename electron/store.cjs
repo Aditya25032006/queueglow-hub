@@ -440,4 +440,3 @@ class HubStore {
 }
 
 module.exports = { HubStore, APP_IDS, MAX_TRAY_FILE };
-
