@@ -15,3 +15,5 @@ Milestone 4 passed. Electron Builder 26.18.0 reported `building target=AppImage 
 Milestone 5 passed. Direct AppImage launch on Ubuntu Wayland rendered the island clock and Settings and passed a notes IPC round trip. See [SMOKE-TEST.md](SMOKE-TEST.md) for the Linux limitations and Wayland warning. Required milestones are complete. The optional untangle and lean-code passes require user approval of the shortlist.
 
 Linux desktop integration follow-up. PipeWire, GNOME, NetworkManager, BlueZ, UPower, and MPRIS adapters now feed the existing UI. GNOME wallpaper accents and XDG autostart are available from the AppImage. Tests reported 22 passes, four skips and zero failures. A staged AppImage passed the packaged checks before replacing the previous build. See the retest in SMOKE-TEST.md. The PowerShell hooks and in-app updater remain open for full parity.
+
+Desktop app shortcuts now accept Linux `.desktop` entries and launch them via GIO. The rebuilt AppImage passed the packaged shortcut check, and the suite reported 22 passes, four skips and zero failures. Remaining full-parity items include agent hooks, in-app updates, and physical integration checks.

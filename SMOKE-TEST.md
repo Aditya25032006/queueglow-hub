@@ -22,3 +22,5 @@ Chromium logged `'--ozone-platform=wayland' is not compatible with Vulkan`. The 
 The rebuilt AppImage passed the renderer, note, and settings checks on Ubuntu GNOME Wayland. The packaged UI read this device's PipeWire volume, GNOME brightness, UPower battery, NetworkManager Wi-Fi and BlueZ Bluetooth state. GNOME wallpaper sync returned a valid accent color. A local D-Bus MPRIS test player supplied metadata and accepted pause and absolute seek through the packaged UI. The app reported launch-on-login support and its autostart entry was created and removed in a temporary XDG configuration directory.
 
 Hardware writes and login after a full logout were not exercised. PowerShell agent hooks and GitHub in-app updates still require Linux implementations. MPRIS artwork is supported for local image files. The recurring Wayland Vulkan diagnostic did not stop launch.
+
+The desktop shortcut build passed an isolated packaged check. Settings saved a Linux `.desktop` entry through the preload API. The island opened the shortcut through GIO, and the entry's test command created its expected marker file. The store test also verified persistence and invalid path rejection.

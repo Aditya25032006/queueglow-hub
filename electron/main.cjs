@@ -19,14 +19,14 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { autoUpdater } = require('electron-updater');
-const { HubStore } = require('./store.cjs');
+const { HubStore, isProgramShortcut, shortcutExtensions } = require('./store.cjs');
 const hooks = require('./hooks.cjs');
 const { MediaBridge } = require('./media.cjs');
 const { GmailBridge } = require('./gmail.cjs');
 const { discoverCli, chooseProvider, askCli, clipAnswer } = require('./robo-cli.cjs');
 const { DURATION_MS, IDLE_SECONDS, gaze } = require('./island-motion.cjs');
 const { linuxLaunchOnLogin, setLinuxLaunchOnLogin } = require('./linux-autostart.cjs');
-const { openLinuxSettings } = require('./linux-system.cjs');
+const { openLinuxSettings, launchDesktopApp } = require('./linux-system.cjs');
 const { wallpaperAccent } = require('./wallpaper.cjs');
 
 if (process.env.QUEUEGLOW_SOFTWARE_RENDER === '1') app.disableHardwareAcceleration();
@@ -599,7 +599,7 @@ function registerSettings() {
     if (_event.sender !== settingsWin?.webContents) throw new Error('Invalid settings sender');
     const result = await dialog.showOpenDialog(settingsWin, {
       properties: ['openFile'],
-      filters: [{ name: 'Windows apps and shortcuts', extensions: ['exe', 'lnk'] }],
+      filters: [{ name: 'Desktop apps and shortcuts', extensions: shortcutExtensions }],
     });
     return result.canceled ? null : result.filePaths[0];
   });
@@ -626,12 +626,9 @@ function registerSettings() {
     const shortcut = store.setting('customShortcuts')[index];
     if (!shortcut) throw new Error('Shortcut has not been configured');
     if (shortcut.type === 'program') {
-      if (
-        !path.isAbsolute(shortcut.path) ||
-        !['.exe', '.lnk'].includes(path.extname(shortcut.path).toLowerCase()) ||
-        !fs.existsSync(shortcut.path)
-      )
+      if (!isProgramShortcut(shortcut.path))
         throw new Error('The selected app is no longer available');
+      if (process.platform === 'linux') return launchDesktopApp(shortcut.path);
       const error = await shell.openPath(shortcut.path);
       if (error) throw new Error(error);
       return true;

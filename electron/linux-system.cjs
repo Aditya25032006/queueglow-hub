@@ -130,4 +130,9 @@ function openLinuxSettings(target) {
   });
 }
 
-module.exports = { linuxSystemRequest, openLinuxSettings };
+async function launchDesktopApp(file) {
+  await command('gio', ['launch', file]);
+  return true;
+}
+
+module.exports = { linuxSystemRequest, openLinuxSettings, launchDesktopApp };
