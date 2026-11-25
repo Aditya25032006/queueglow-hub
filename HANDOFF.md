@@ -11,3 +11,5 @@ Milestone 2 passed. The baseline test assumed a Windows path separator and faile
 Milestone 3 passed. The package configuration declares an x64 AppImage. `npm test` reported 22 passes, four skips, and zero failures. Next step is the specified electron-builder invocation with publishing disabled.
 
 Milestone 4 passed. Electron Builder 26.18.0 reported `building target=AppImage arch=x64` and built the embedded block map. The artifact is `release/installer/Queueglow Hub-0.1.5.AppImage` (SHA-256 `fc5f850ef6483c53c92f26c98258208b6c80cd293a44d9c388c0cbc0f855f83c`). Packaging used the default Electron icon and Utility category, and warned that desktop environments may not associate the window with its desktop entry. Next step is to launch the artifact in an isolated test profile.
+
+Milestone 5 passed. Direct AppImage launch on Ubuntu Wayland rendered the island clock and Settings and passed a notes IPC round trip. See [SMOKE-TEST.md](SMOKE-TEST.md) for the Linux limitations and Wayland warning. Required milestones are complete. The optional untangle and lean-code passes require user approval of the shortlist.
