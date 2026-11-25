@@ -7,3 +7,5 @@ Use `export PATH="/tmp/queueglow-node.CurLap/node-v24.22.3-linux-x64/bin:$PATH"`
 Next step is to run the baseline `npm test` and `npm run build`.
 
 Milestone 2 passed. The baseline test assumed a Windows path separator and failed with `false !== true`. The test now checks the full platform-native path. `npm test` reported 22 passes, four skips, and zero failures. `npm run build` completed with two existing lucide-react module-directive warnings. Next step is to add the Linux x64 AppImage target.
+
+Milestone 3 passed. The package configuration declares an x64 AppImage. `npm test` reported 22 passes, four skips, and zero failures. Next step is the specified electron-builder invocation with publishing disabled.
