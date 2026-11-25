@@ -24,31 +24,33 @@ const screenArgs = [
 ];
 
 async function linuxSystemState() {
-  const [audio, brightness, wifi, networks, bluetooth, battery, player] = await Promise.all([
-    command('wpctl', ['get-volume', sink]).catch(() => ''),
-    command('gdbus', [
-      ...screenArgs,
-      'org.freedesktop.DBus.Properties.Get',
-      screen,
-      'Brightness',
-    ]).catch(() => ''),
-    command('nmcli', ['-t', 'radio', 'wifi']).catch(() => ''),
-    command('nmcli', [
-      '-t',
-      '--escape',
-      'no',
-      '-f',
-      'ACTIVE,SSID',
-      'dev',
-      'wifi',
-      'list',
-      '--rescan',
-      'no',
-    ]).catch(() => ''),
-    command('bluetoothctl', ['show']).catch(() => ''),
-    command('upower', ['-i', '/org/freedesktop/UPower/devices/DisplayDevice']).catch(() => ''),
-    getLinuxMedia(command).catch(() => null),
-  ]);
+  const [audio, brightness, wifi, networks, bluetooth, devices, battery, player] =
+    await Promise.all([
+      command('wpctl', ['get-volume', sink]).catch(() => ''),
+      command('gdbus', [
+        ...screenArgs,
+        'org.freedesktop.DBus.Properties.Get',
+        screen,
+        'Brightness',
+      ]).catch(() => ''),
+      command('nmcli', ['-t', 'radio', 'wifi']).catch(() => ''),
+      command('nmcli', [
+        '-t',
+        '--escape',
+        'no',
+        '-f',
+        'ACTIVE,SSID',
+        'dev',
+        'wifi',
+        'list',
+        '--rescan',
+        'no',
+      ]).catch(() => ''),
+      command('bluetoothctl', ['show']).catch(() => ''),
+      command('bluetoothctl', ['devices', 'Connected']).catch(() => ''),
+      command('upower', ['-i', '/org/freedesktop/UPower/devices/DisplayDevice']).catch(() => ''),
+      getLinuxMedia(command).catch(() => null),
+    ]);
   const level = audio.match(/^Volume: (\d+(?:\.\d+)?)/)?.[1];
   const backlight = Number(brightness.match(/<(\d+)>/)?.[1]);
   const wifiSsid =
@@ -76,7 +78,10 @@ async function linuxSystemState() {
       wifiSsid,
       bluetoothAvailable: powered != null,
       bluetoothEnabled: powered === 'yes',
-      bluetoothDevice: null,
+      bluetoothDevice:
+        powered === 'yes'
+          ? devices.match(/^Device (?:[0-9A-F]{2}:){5}[0-9A-F]{2} (.+)$/im)?.[1] || null
+          : null,
     },
   };
 }
