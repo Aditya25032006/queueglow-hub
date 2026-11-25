@@ -25,6 +25,8 @@ const { MediaBridge } = require('./media.cjs');
 const { GmailBridge } = require('./gmail.cjs');
 const { discoverCli, chooseProvider, askCli, clipAnswer } = require('./robo-cli.cjs');
 const { DURATION_MS, IDLE_SECONDS, gaze } = require('./island-motion.cjs');
+const { linuxLaunchOnLogin, setLinuxLaunchOnLogin } = require('./linux-autostart.cjs');
+const { openLinuxSettings } = require('./linux-system.cjs');
 const { wallpaperAccent } = require('./wallpaper.cjs');
 
 if (process.env.QUEUEGLOW_SOFTWARE_RENDER === '1') app.disableHardwareAcceleration();
@@ -396,6 +398,14 @@ function openTray() {
   });
 }
 
+function canLaunchOnLogin() {
+  return (
+    app.isPackaged &&
+    (process.platform === 'win32' ||
+      (process.platform === 'linux' && Boolean(process.env.APPIMAGE)))
+  );
+}
+
 function hookScript() {
   const packaged = path.join(process.resourcesPath, 'agent_hook.ps1');
   return fs.existsSync(packaged) ? packaged : path.join(__dirname, 'agent_hook.ps1');
@@ -440,9 +450,12 @@ function currentSettings() {
     activity: settingsActivity(state),
     connections,
     notificationsAvailable: Notification.isSupported(),
-    canLaunchOnLogin: app.isPackaged && process.platform === 'win32',
+    canLaunchOnLogin: canLaunchOnLogin(),
     launchOnLogin:
-      app.isPackaged && process.platform === 'win32' && app.getLoginItemSettings().openAtLogin,
+      canLaunchOnLogin() &&
+      (process.platform === 'linux'
+        ? linuxLaunchOnLogin()
+        : app.getLoginItemSettings().openAtLogin),
     robo: {
       provider: robo.provider,
       codex: !!robo.cli.codex,
@@ -596,8 +609,10 @@ function registerSettings() {
   });
   settings('hook', (provider, action) => hooks.change(provider, action, hookScript()));
   settings('login', (openAtLogin) => {
-    if (!app.isPackaged || process.platform !== 'win32') throw new Error('Startup is unavailable');
+    if (!canLaunchOnLogin()) throw new Error('Startup is unavailable');
     if (typeof openAtLogin !== 'boolean') throw new Error('Invalid startup preference');
+    if (process.platform === 'linux')
+      return setLinuxLaunchOnLogin(openAtLogin, process.env.APPIMAGE);
     app.setLoginItemSettings({ openAtLogin, path: process.execPath });
   });
   settings('roboKey', saveRoboKey);
@@ -854,6 +869,7 @@ function register() {
       display: 'ms-settings:display',
     };
     if (!Object.hasOwn(urls, target)) throw new Error('Invalid system settings target');
+    if (process.platform === 'linux') return openLinuxSettings(target);
     return shell.openExternal(urls[target]);
   });
   ipcMain.handle('hooks', (_e, action, provider) => hooks.change(provider, action, hookScript()));

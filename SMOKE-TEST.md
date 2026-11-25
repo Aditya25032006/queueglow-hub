@@ -16,3 +16,9 @@ Verified on Ubuntu x86-64 in a Wayland desktop session. Executed the packaged Ap
 Source inspection found that agent hook registration generates a `powershell.exe` command and wallpaper accent detection returns null on non-Windows platforms. These were source-verified only. The Windows system-settings shortcuts use `ms-settings:` URLs and have no Linux implementation. The smoke test did not register hooks or modify system preferences.
 
 Chromium logged `'--ozone-platform=wayland' is not compatible with Vulkan`. The renderer and IPC checks above passed with the default launch settings.
+
+## Linux desktop integration retest
+
+The rebuilt AppImage passed the renderer, note, and settings checks on Ubuntu GNOME Wayland. The packaged UI read this device's PipeWire volume, GNOME brightness, UPower battery, NetworkManager Wi-Fi and BlueZ Bluetooth state. GNOME wallpaper sync returned a valid accent color. A local D-Bus MPRIS test player supplied metadata and accepted pause and absolute seek through the packaged UI. The app reported launch-on-login support and its autostart entry was created and removed in a temporary XDG configuration directory.
+
+Hardware writes and login after a full logout were not exercised. PowerShell agent hooks and GitHub in-app updates still require Linux implementations. MPRIS artwork is supported for local image files. The recurring Wayland Vulkan diagnostic did not stop launch.
