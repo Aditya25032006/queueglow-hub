@@ -1,6 +1,48 @@
 const { execFile } = require('node:child_process');
+const { fileURLToPath } = require('node:url');
+const { promisify } = require('node:util');
+
+const run = promisify(execFile);
+async function linuxWallpaperAccent() {
+  try {
+    const { stdout: scheme } = await run(
+      'gsettings',
+      ['get', 'org.gnome.desktop.interface', 'color-scheme'],
+      { timeout: 2000 },
+    );
+    const key = scheme.trim() === "'prefer-dark'" ? 'picture-uri-dark' : 'picture-uri';
+    const { stdout } = await run('gsettings', ['get', 'org.gnome.desktop.background', key], {
+      timeout: 2000,
+    });
+    const uri = stdout.trim().match(/^'(file:\/\/.*)'$/)?.[1];
+    if (!uri) return null;
+    const { nativeImage } = require('electron');
+    const image = nativeImage.createFromPath(fileURLToPath(uri));
+    if (image.isEmpty()) return null;
+    const pixels = image.resize({ width: 16, height: 16 }).toBitmap();
+    const totals = [0, 0, 0];
+    for (let i = 0; i < pixels.length; i += 4) {
+      totals[0] += pixels[i + 2];
+      totals[1] += pixels[i + 1];
+      totals[2] += pixels[i];
+    }
+    return (
+      '#' +
+      totals
+        .map((value) =>
+          Math.round(value / (pixels.length / 4))
+            .toString(16)
+            .padStart(2, '0'),
+        )
+        .join('')
+    );
+  } catch {
+    return null;
+  }
+}
 
 function wallpaperAccent() {
+  if (process.platform === 'linux') return linuxWallpaperAccent();
   if (process.platform !== 'win32') return Promise.resolve(null);
   const script = [
     "$ErrorActionPreference='Stop'",

@@ -157,7 +157,10 @@ test('settings validate and persist island, notification, and shortcut preferenc
     assert.throws(() => store.setSetting('customShortcuts', []), /Invalid setting/);
     assert.throws(() => store.setting('constructor'), /Unknown setting/);
     assert.throws(() => store.setShortcut(4, null), /Invalid shortcut slot/);
-    const appPath = path.join(root, 'notepad.exe');
+    const appPath = path.join(
+      root,
+      process.platform === 'linux' ? 'notepad.desktop' : 'notepad.exe',
+    );
     fs.writeFileSync(appPath, 'placeholder');
     assert.deepEqual(store.setShortcut(2, { label: 'Notepad', type: 'program', path: appPath }), {
       label: 'Notepad',
@@ -167,7 +170,7 @@ test('settings validate and persist island, notification, and shortcut preferenc
     assert.throws(
       () =>
         store.setShortcut(2, { label: 'Bad', type: 'program', path: path.join(root, 'bad.txt') }),
-      /Windows app/,
+      /desktop app/,
     );
     assert.throws(() => store.setShortcut(3, { label: '', url: 'https://example.com' }), /label/);
     for (const url of [
@@ -198,7 +201,7 @@ test('settings validate and persist island, notification, and shortcut preferenc
     assert.deepEqual(reopened.setting('customShortcuts')[2], {
       label: 'Notepad',
       type: 'program',
-      path: path.join(root, 'notepad.exe'),
+      path: path.join(root, process.platform === 'linux' ? 'notepad.desktop' : 'notepad.exe'),
     });
     reopened.setShortcut(3, null);
     reopened.setShortcut(2, null);

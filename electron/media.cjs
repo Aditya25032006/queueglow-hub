@@ -2,6 +2,7 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 const readline = require('node:readline');
+const { linuxSystemRequest } = require('./linux-system.cjs');
 const { LyricsClient } = require('./lyrics.cjs');
 
 class MediaBridge {
@@ -18,6 +19,11 @@ class MediaBridge {
     this.lyricsTrackKey = '';
   }
   start() {
+    if (process.platform === 'linux') {
+      this.poll();
+      this.interval = setInterval(() => this.poll(), 4000);
+      return;
+    }
     if (process.platform !== 'win32') return;
     const packaged = path.join(this.resourcePath, 'media_bridge.ps1');
     const script = fs.existsSync(packaged) ? packaged : path.join(__dirname, 'media_bridge.ps1');
@@ -57,6 +63,7 @@ class MediaBridge {
     this.interval = setInterval(() => this.poll(), 4000);
   }
   request(action, seconds, options = {}) {
+    if (process.platform === 'linux') return linuxSystemRequest(action, seconds, options);
     if (!this.process?.stdin.writable)
       return Promise.reject(new Error('Windows media controls are unavailable'));
     const id = ++this.counter;

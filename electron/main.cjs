@@ -18,13 +18,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { setTimeout: delay } = require('node:timers/promises');
 const { autoUpdater } = require('electron-updater');
-const { HubStore } = require('./store.cjs');
+const { HubStore, isProgramShortcut, shortcutExtensions } = require('./store.cjs');
 const hooks = require('./hooks.cjs');
 const { MediaBridge } = require('./media.cjs');
 const { GmailBridge } = require('./gmail.cjs');
 const { discoverCli, chooseProvider, askCli, clipAnswer } = require('./robo-cli.cjs');
 const { DURATION_MS, IDLE_SECONDS, gaze } = require('./island-motion.cjs');
+const {
+  linuxLaunchOnLogin,
+  setLinuxLaunchOnLogin,
+  updateLinuxApplicationEntry,
+} = require('./linux-autostart.cjs');
+const { openLinuxSettings, launchDesktopApp } = require('./linux-system.cjs');
 const { wallpaperAccent } = require('./wallpaper.cjs');
 
 if (process.env.QUEUEGLOW_SOFTWARE_RENDER === '1') app.disableHardwareAcceleration();
@@ -396,9 +403,23 @@ function openTray() {
   });
 }
 
+function canLaunchOnLogin() {
+  return (
+    app.isPackaged &&
+    (process.platform === 'win32' ||
+      (process.platform === 'linux' && Boolean(process.env.APPIMAGE)))
+  );
+}
+
 function hookScript() {
   const packaged = path.join(process.resourcesPath, 'agent_hook.ps1');
   return fs.existsSync(packaged) ? packaged : path.join(__dirname, 'agent_hook.ps1');
+}
+
+function changeAgentHook(provider, action) {
+  if (action === 'connect' && process.platform !== 'win32')
+    throw new Error('Coding-agent hooks currently require Windows');
+  return hooks.change(provider, action, hookScript());
 }
 
 function settingsActivity(state) {
@@ -426,7 +447,9 @@ function currentSettings() {
   const connections = Object.fromEntries(
     ['codex', 'claude'].map((provider) => {
       try {
-        return [provider, hooks.registrationStatus(provider, hookScript())];
+        const status = hooks.registrationStatus(provider, hookScript());
+        if (process.platform === 'win32') return [provider, status];
+        return [provider, status === 'disconnected' ? 'unsupported' : 'remove-only'];
       } catch {
         return [provider, 'unavailable'];
       }
@@ -440,9 +463,12 @@ function currentSettings() {
     activity: settingsActivity(state),
     connections,
     notificationsAvailable: Notification.isSupported(),
-    canLaunchOnLogin: app.isPackaged && process.platform === 'win32',
+    canLaunchOnLogin: canLaunchOnLogin(),
     launchOnLogin:
-      app.isPackaged && process.platform === 'win32' && app.getLoginItemSettings().openAtLogin,
+      canLaunchOnLogin() &&
+      (process.platform === 'linux'
+        ? linuxLaunchOnLogin()
+        : app.getLoginItemSettings().openAtLogin),
     robo: {
       provider: robo.provider,
       codex: !!robo.cli.codex,
@@ -586,7 +612,7 @@ function registerSettings() {
     if (_event.sender !== settingsWin?.webContents) throw new Error('Invalid settings sender');
     const result = await dialog.showOpenDialog(settingsWin, {
       properties: ['openFile'],
-      filters: [{ name: 'Windows apps and shortcuts', extensions: ['exe', 'lnk'] }],
+      filters: [{ name: 'Desktop apps and shortcuts', extensions: shortcutExtensions }],
     });
     return result.canceled ? null : result.filePaths[0];
   });
@@ -594,10 +620,12 @@ function registerSettings() {
     store.setAppVisible(id, value);
     emit();
   });
-  settings('hook', (provider, action) => hooks.change(provider, action, hookScript()));
+  settings('hook', changeAgentHook);
   settings('login', (openAtLogin) => {
-    if (!app.isPackaged || process.platform !== 'win32') throw new Error('Startup is unavailable');
+    if (!canLaunchOnLogin()) throw new Error('Startup is unavailable');
     if (typeof openAtLogin !== 'boolean') throw new Error('Invalid startup preference');
+    if (process.platform === 'linux')
+      return setLinuxLaunchOnLogin(openAtLogin, process.env.APPIMAGE);
     app.setLoginItemSettings({ openAtLogin, path: process.execPath });
   });
   settings('roboKey', saveRoboKey);
@@ -611,12 +639,9 @@ function registerSettings() {
     const shortcut = store.setting('customShortcuts')[index];
     if (!shortcut) throw new Error('Shortcut has not been configured');
     if (shortcut.type === 'program') {
-      if (
-        !path.isAbsolute(shortcut.path) ||
-        !['.exe', '.lnk'].includes(path.extname(shortcut.path).toLowerCase()) ||
-        !fs.existsSync(shortcut.path)
-      )
+      if (!isProgramShortcut(shortcut.path))
         throw new Error('The selected app is no longer available');
+      if (process.platform === 'linux') return launchDesktopApp(shortcut.path);
       const error = await shell.openPath(shortcut.path);
       if (error) throw new Error(error);
       return true;
@@ -854,9 +879,10 @@ function register() {
       display: 'ms-settings:display',
     };
     if (!Object.hasOwn(urls, target)) throw new Error('Invalid system settings target');
+    if (process.platform === 'linux') return openLinuxSettings(target);
     return shell.openExternal(urls[target]);
   });
-  ipcMain.handle('hooks', (_e, action, provider) => hooks.change(provider, action, hookScript()));
+  ipcMain.handle('hooks', (_e, action, provider) => changeAgentHook(provider, action));
   ipcMain.handle('decide', (_e, id, behavior) => {
     if (!['allow', 'deny'].includes(behavior) || !/^[0-9a-f-]{36}$/i.test(id))
       throw new Error('Invalid decision');
@@ -913,19 +939,32 @@ function updaterErrorMessage(error) {
 
 function configureUpdater() {
   const metadata = path.join(process.resourcesPath, 'app-update.yml');
-  const supported = process.platform === 'win32' && app.isPackaged && fs.existsSync(metadata);
+  const linuxAppImage = process.platform === 'linux' && Boolean(process.env.APPIMAGE);
+  const supported =
+    (process.platform === 'win32' || linuxAppImage) && app.isPackaged && fs.existsSync(metadata);
   updateState = {
     supported,
     status: 'idle',
+    manualDownload: linuxAppImage,
     version: app.getVersion(),
     message: supported
       ? ''
-      : 'In-app updates are available after installing Queueglow for Windows.',
+      : 'In-app updates require the Windows installer or Linux AppImage release.',
   };
   if (!supported) return;
 
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoDownload = !linuxAppImage;
+  autoUpdater.autoInstallOnAppQuit = !linuxAppImage;
+  if (linuxAppImage) {
+    autoUpdater.on('appimage-filename-updated', (destination) => {
+      try {
+        if (linuxLaunchOnLogin(process.env.APPIMAGE)) setLinuxLaunchOnLogin(true, destination);
+        updateLinuxApplicationEntry(process.env.APPIMAGE, destination);
+      } catch (error) {
+        console.warn('Could not update the desktop launch entries:', error.message);
+      }
+    });
+  }
   autoUpdater.on('checking-for-update', () => {
     updateState = { ...updateState, status: 'checking', message: 'Checking for updates…' };
     sendUpdateState();
@@ -934,9 +973,11 @@ function configureUpdater() {
     updateState = {
       ...updateState,
       version: info.version,
-      status: 'downloading',
+      status: linuxAppImage ? 'available' : 'downloading',
       percent: 0,
-      message: `Downloading version ${info.version} in the background.`,
+      message: linuxAppImage
+        ? `Version ${info.version} is available to download.`
+        : `Downloading version ${info.version} in the background.`,
     };
     sendUpdateState();
   });
@@ -964,7 +1005,9 @@ function configureUpdater() {
       status: 'downloaded',
       version: info.version,
       percent: 100,
-      message: `Version ${info.version} is ready. It will install when you next quit Queueglow.`,
+      message: linuxAppImage
+        ? `Version ${info.version} is ready. Restart to install it.`
+        : `Version ${info.version} is ready. It will install when you next quit Queueglow.`,
     };
     sendUpdateState();
   });
@@ -1033,7 +1076,29 @@ async function askRoboOpenAI(prompt, screenshot) {
       .join('\n'),
   );
 }
-app.whenReady().then(() => {
+async function lockLinuxInstance() {
+  if (process.platform !== 'linux' || !app.isPackaged) return true;
+  let locked = app.requestSingleInstanceLock();
+  // electron-updater can spawn the replacement before the original process exits.
+  if (process.env.APPIMAGE_SILENT_INSTALL === 'true') {
+    for (let attempt = 0; !locked && attempt < 20; attempt++) {
+      await delay(150);
+      locked = app.requestSingleInstanceLock();
+    }
+  }
+  if (locked) {
+    app.on('second-instance', () => {
+      if (quitting || !win || win.isDestroyed()) return;
+      win.show();
+      resize(false);
+      win.focus();
+    });
+  }
+  return locked;
+}
+
+app.whenReady().then(async () => {
+  if (!(await lockLinuxInstance())) return app.exit(0);
   fs.mkdirSync(root, { recursive: true });
   store = new HubStore(root);
   let googleClientId = '';
@@ -1063,7 +1128,7 @@ app.whenReady().then(() => {
   openTray();
   if (store.setting('wallpaperSync')) refreshWallpaperColor();
   setInterval(refreshWallpaperColor, 10 * 60 * 1000);
-  if (updateState.supported) {
+  if (updateState.supported && !updateState.manualDownload) {
     setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 12000);
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
   }

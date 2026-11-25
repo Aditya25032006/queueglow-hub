@@ -279,13 +279,19 @@ export default function App() {
     setSuccess('');
     try {
       if (!updateState.supported) {
-        setSuccess(updateState.message || 'In-app updates are available in the Windows install.');
+        setSuccess(updateState.message || 'In-app updates require a packaged release.');
       } else if (updateState.status === 'downloaded') {
         await window.hub.installUpdate();
       } else if (updateState.status === 'available') {
-        setSuccess(
-          'The update is downloading in the background. It installs when you quit Queueglow.',
-        );
+        if (updateState.manualDownload) {
+          const next = await window.hub.downloadUpdate();
+          setUpdateState(next);
+          if (next.status === 'error') setError(next.message);
+        } else {
+          setSuccess(
+            'The update is downloading in the background. It installs when you quit Queueglow.',
+          );
+        }
       } else {
         const next = await window.hub.checkForUpdates();
         setUpdateState(next);
@@ -420,7 +426,9 @@ export default function App() {
               {updateState.status === 'downloaded'
                 ? 'Restart to update'
                 : updateState.status === 'available'
-                  ? 'Updating in background…'
+                  ? updateState.manualDownload
+                    ? 'Download update'
+                    : 'Updating in background…'
                   : updateState.status === 'downloading'
                     ? `Updating ${updateState.percent || 0}%`
                     : updateState.status === 'checking'
@@ -1203,14 +1211,14 @@ function MusicPage({
         )}
       </div>
       <div className="music-info">
-        <div className="eyebrow">{system ? 'WINDOWS MEDIA' : 'LOCAL MUSIC'}</div>
+        <div className="eyebrow">{system ? 'SYSTEM MEDIA' : 'LOCAL MUSIC'}</div>
         <h1>{title}</h1>
         <p>
           {system
-            ? system.artist || 'Current Windows media session'
+            ? system.artist || 'Current system media session'
             : activeTrack
               ? 'Playing from your files'
-              : 'Add audio files or play music in another Windows app.'}
+              : 'Add audio files or play music in another app.'}
         </p>
         {lyric && (
           <p className="music-lyric" aria-label="Current lyric">
@@ -1482,8 +1490,8 @@ function HomePage({ now, jobsToday, state, remaining, navigate, play }) {
             <small>
               {state.systemMedia
                 ? state.systemMedia.playing
-                  ? `${state.systemMedia.artist || 'Windows media'} · Playing`
-                  : `${state.systemMedia.artist || 'Windows media'} · Paused`
+                  ? `${state.systemMedia.artist || 'System media'} · Playing`
+                  : `${state.systemMedia.artist || 'System media'} · Paused`
                 : state.audio.length
                   ? 'Ready to play'
                   : 'Add your songs'}

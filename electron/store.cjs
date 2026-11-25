@@ -3,6 +3,18 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
+const shortcutExtensions = process.platform === 'linux' ? ['desktop'] : ['exe', 'lnk'];
+
+function isProgramShortcut(programPath) {
+  return (
+    typeof programPath === 'string' &&
+    programPath.length <= 2048 &&
+    path.isAbsolute(programPath) &&
+    shortcutExtensions.includes(path.extname(programPath).slice(1).toLowerCase()) &&
+    fs.statSync(programPath, { throwIfNoEntry: false })?.isFile()
+  );
+}
+
 const APP_IDS = [
   'home',
   'codex',
@@ -146,17 +158,10 @@ class HubStore {
       if (typeof label !== 'string' || !label.trim() || label.trim().length > 32)
         throw new Error('Enter a shortcut label of 1 to 32 characters');
       if (!['website', 'program'].includes(type))
-        throw new Error('Choose a website or Windows app');
+        throw new Error('Choose a website or desktop app');
       if (type === 'program') {
-        if (
-          typeof programPath !== 'string' ||
-          !path.isAbsolute(programPath) ||
-          programPath.length > 2048 ||
-          !['.exe', '.lnk'].includes(path.extname(programPath).toLowerCase()) ||
-          !fs.existsSync(programPath) ||
-          !fs.statSync(programPath).isFile()
-        )
-          throw new Error('Choose an existing Windows app or shortcut');
+        if (!isProgramShortcut(programPath))
+          throw new Error('Choose an existing desktop app or shortcut');
         entry = { label: label.trim(), type, path: programPath };
       } else {
         let target;
@@ -439,4 +444,4 @@ class HubStore {
   }
 }
 
-module.exports = { HubStore, APP_IDS, MAX_TRAY_FILE };
+module.exports = { HubStore, APP_IDS, MAX_TRAY_FILE, isProgramShortcut, shortcutExtensions };

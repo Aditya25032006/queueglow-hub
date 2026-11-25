@@ -176,11 +176,21 @@ function Connections({ connections, run }) {
     update: 'Reconnect to update hooks',
     disconnected: 'Disconnected',
     unavailable: 'Provider configuration unavailable',
+    unsupported: 'Hooks currently require Windows',
+    'remove-only': 'A Windows hook is still registered',
   };
   return (
     <Group title="Coding agents">
       {Object.entries(providerNames).map(([id, label]) => {
         const status = connections[id];
+        if (status === 'unsupported')
+          return <Row key={id} title={label} description={statusLabels[status]} />;
+        if (status === 'remove-only')
+          return (
+            <Row key={id} title={label} description={statusLabels[status]}>
+              <button onClick={() => run(() => bridge.hook(id, 'remove'))}>Disconnect</button>
+            </Row>
+          );
         return (
           <Row key={id} title={label} description={statusLabels[status]}>
             <div className="actions">
@@ -204,10 +214,14 @@ function Connections({ connections, run }) {
           </Row>
         );
       })}
-      <p className="helper">
-        Start a new agent session after connecting. Codex may prompt you to trust the installed
-        hooks.
-      </p>
+      {Object.values(connections).some((status) =>
+        ['connected', 'disconnected', 'update'].includes(status),
+      ) && (
+        <p className="helper">
+          Start a new agent session after connecting. Codex may prompt you to trust the installed
+          hooks.
+        </p>
+      )}
     </Group>
   );
 }
@@ -304,8 +318,8 @@ function AiSettings({ data, run }) {
           )}
         </form>
         <p className="helper">
-          Windows encrypts the saved key on this PC. Robo sends your prompt and any screen
-          attachment you select to OpenAI.
+          The saved key uses your operating system’s credential storage. Robo sends your prompt and
+          any screen attachment you select to OpenAI.
         </p>
       </Group>
     </>
@@ -335,7 +349,7 @@ function Shortcut({ index, shortcut, run }) {
         Shortcut type
         <select value={type} onChange={(event) => setType(event.target.value)}>
           <option value="website">Website</option>
-          <option value="program">Windows app</option>
+          <option value="program">Desktop app</option>
         </select>
       </label>
       <label>
@@ -351,12 +365,12 @@ function Shortcut({ index, shortcut, run }) {
       {type === 'program' ? (
         <div className="shortcut-program">
           <label>
-            Windows app
+            Desktop app
             <input
               readOnly
               required={!programPath}
               value={programPath}
-              placeholder="Choose an .exe or .lnk file"
+              placeholder="Choose an installed app shortcut"
             />
           </label>
           <button
@@ -400,7 +414,7 @@ function Apps({ data, run }) {
     <>
       <Group title="Custom shortcuts">
         <p className="helper">
-          <Globe2 size={15} /> Add up to four websites or Windows apps to the island’s apps list.
+          <Globe2 size={15} /> Add up to four websites or Desktop apps to the island’s apps list.
         </p>
         {data.settings.customShortcuts.map((shortcut, index) => (
           <Shortcut
@@ -472,10 +486,10 @@ function Preferences({ section, data, run }) {
   if (section === 'general')
     return (
       <>
-        <Group title="Windows">
+        <Group title="Desktop">
           <Select
             label="Global island shortcut"
-            description="Show or fold Queueglow from anywhere in Windows."
+            description="Show or fold Queueglow from anywhere on your desktop."
             value={settings.globalHotkey}
             change={(value) => run(() => bridge.set('globalHotkey', value))}
             options={[
@@ -491,12 +505,12 @@ function Preferences({ section, data, run }) {
             disabled={!data.canLaunchOnLogin}
             description={
               data.canLaunchOnLogin
-                ? 'Open Queueglow when you sign in to Windows.'
-                : 'Available in the packaged Windows app.'
+                ? 'Open Queueglow when you sign in.'
+                : 'Available in the packaged app.'
             }
             change={(value) => run(() => bridge.login(value))}
           />
-          {toggle('sound', 'Sounds', 'Play a sound with Queueglow’s Windows notifications.')}
+          {toggle('sound', 'Sounds', 'Play a sound with Queueglow’s desktop notifications.')}
           {toggle(
             'reduceMotion',
             'Reduce animations',
@@ -528,7 +542,7 @@ function Preferences({ section, data, run }) {
           ])}
           {toggle(
             'wallpaperSync',
-            'Sync with Windows wallpaper',
+            'Sync with desktop wallpaper',
             'Sample the current wallpaper locally and tint the island. Refreshes every 10 minutes.',
           )}
           {select('roboAppearance', 'Robo eyes', [
@@ -593,13 +607,13 @@ function Preferences({ section, data, run }) {
     const muted = disabled || !settings.notifications;
     return (
       <>
-        <Group title="Windows banners">
+        <Group title="Desktop banners">
           {toggle(
             'notifications',
             'Show notifications',
             disabled
-              ? 'Windows notifications are unavailable.'
-              : 'Send agent alerts to Windows notifications.',
+              ? 'Desktop notifications are unavailable.'
+              : 'Send agent alerts to Desktop notifications.',
             disabled,
           )}
           {select(
@@ -648,7 +662,7 @@ function Preferences({ section, data, run }) {
           {toggle(
             'wallpaperSync',
             'Sync colors with wallpaper',
-            'Sample your current Windows wallpaper locally and adapt the island tint.',
+            'Sample your current desktop wallpaper locally and adapt the island tint.',
           )}
           {select('restingIndicator', 'When folded', [
             ['eyes', 'Eyes'],
@@ -692,8 +706,8 @@ const descriptions = {
   robo: 'Adjust how Robo looks and handles screen context.',
   wardrobe: 'Personalize the island colors and Robo eyes.',
   account: 'See how this local preview stores its settings.',
-  general: 'Set Queueglow’s Windows, animation, and clipboard preferences.',
-  notifications: 'Choose which agent events can show a Windows banner.',
+  general: 'Set Queueglow’s desktop, animation, and clipboard preferences.',
+  notifications: 'Choose which agent events can show a desktop banner.',
   island: 'Adjust the island’s appearance and behavior.',
   focus: 'Manage interruptions while a focus timer is running.',
   news: 'Read what is included in this Queueglow preview.',

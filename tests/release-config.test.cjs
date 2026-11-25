@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const packageJson = require('../package.json');
 const build = require('../scripts/electron-builder.config.cjs');
 
@@ -13,7 +14,7 @@ test('public Windows builds use an installable, update-enabled NSIS setup', () =
   assert.equal(build.publish[0].provider, 'github');
   assert.equal(build.publish[0].owner, 'KausthubPulipati');
   assert.equal(build.publish[0].repo, 'queueglow-hub');
-  assert.equal(build.electronDownload.cache.endsWith('.cache\\electron'), true);
+  assert.equal(build.electronDownload.cache, path.resolve(__dirname, '..', '.cache', 'electron'));
 });
 
 test('installer keeps the helper scripts at the resources root used by Electron', () => {
