@@ -5,3 +5,5 @@ Milestone 1 passed on `linux-build`. The checkout is from the user's fork. Node 
 Use `export PATH="/tmp/queueglow-node.CurLap/node-v24.22.3-linux-x64/bin:$PATH"` while the verified local runtime is available.
 
 Next step is to run the baseline `npm test` and `npm run build`.
+
+Milestone 2 passed. The baseline test assumed a Windows path separator and failed with `false !== true`. The test now checks the full platform-native path. `npm test` reported 22 passes, four skips, and zero failures. `npm run build` completed with two existing lucide-react module-directive warnings. Next step is to add the Linux x64 AppImage target.
