@@ -44,7 +44,6 @@ const appLabels = {
   clips: 'Clips',
   note: 'Notes',
   agenda: 'Agenda',
-  mail: 'Mail',
 };
 const providerNames = { codex: 'Codex', claude: 'Claude Code' };
 const bridge = window.queueglowSettings;
@@ -176,11 +175,21 @@ function Connections({ connections, run }) {
     update: 'Reconnect to update hooks',
     disconnected: 'Disconnected',
     unavailable: 'Provider configuration unavailable',
+    unsupported: 'Hooks currently require Windows',
+    'remove-only': 'A Windows hook is still registered',
   };
   return (
     <Group title="Coding agents">
       {Object.entries(providerNames).map(([id, label]) => {
         const status = connections[id];
+        if (status === 'unsupported')
+          return <Row key={id} title={label} description={statusLabels[status]} />;
+        if (status === 'remove-only')
+          return (
+            <Row key={id} title={label} description={statusLabels[status]}>
+              <button onClick={() => run(() => bridge.hook(id, 'remove'))}>Disconnect</button>
+            </Row>
+          );
         return (
           <Row key={id} title={label} description={statusLabels[status]}>
             <div className="actions">
@@ -204,10 +213,14 @@ function Connections({ connections, run }) {
           </Row>
         );
       })}
-      <p className="helper">
-        Start a new agent session after connecting. Codex may prompt you to trust the installed
-        hooks.
-      </p>
+      {Object.values(connections).some((status) =>
+        ['connected', 'disconnected', 'update'].includes(status),
+      ) && (
+        <p className="helper">
+          Start a new agent session after connecting. Codex may prompt you to trust the installed
+          hooks.
+        </p>
+      )}
     </Group>
   );
 }

@@ -11,7 +11,6 @@ import {
   Copy,
   FileText,
   CalendarDays,
-  Mail,
   Volume2,
   Plus,
   MoreHorizontal,
@@ -55,7 +54,6 @@ const ICONS = {
   clips: Copy,
   note: FileText,
   agenda: CalendarDays,
-  mail: Mail,
 };
 const NAMES = {
   home: 'Home',
@@ -68,7 +66,6 @@ const NAMES = {
   clips: 'Clips',
   note: 'Note',
   agenda: 'Agenda',
-  mail: 'Mail',
 };
 const fmt = (seconds) =>
   `${Math.floor(Math.max(0, seconds) / 60)
@@ -118,14 +115,6 @@ export default function App() {
   const [error, setError] = useState(''),
     [success, setSuccess] = useState('');
   const [updateState, setUpdateState] = useState({ supported: false, status: 'idle', message: '' });
-  const [gmail, setGmail] = useState({
-    configured: false,
-    connected: false,
-    loading: false,
-    email: '',
-    messages: [],
-    error: '',
-  });
   const [duration, setDuration] = useState(25),
     [selectedMode, setSelectedMode] = useState('work');
   const [note, setNote] = useState(''),
@@ -183,14 +172,6 @@ export default function App() {
       }
     });
   }, []);
-  useEffect(() => window.hub.onGmail(setGmail), []);
-  useEffect(() => {
-    if (page === 'mail')
-      window.hub
-        .gmailState()
-        .then(setGmail)
-        .catch((e) => setGmail((s) => ({ ...s, error: e.message })));
-  }, [page]);
   useEffect(() => {
     window.hub
       .updateState()
@@ -334,6 +315,10 @@ export default function App() {
       <button
         className="island-notch"
         aria-label="Open Queueglow"
+        onMouseEnter={() => {
+          if (state.folded && state.settings?.islandExpansion !== 'click')
+            call(() => window.hub.expand());
+        }}
         onClick={() => state.folded && call(() => window.hub.expand())}
       >
         <div className="eyes">
@@ -846,75 +831,6 @@ export default function App() {
             setAgendaEnd={setAgendaEnd}
           />
         )}
-        {page === 'mail' && (
-          <section className="mail-page">
-            <div className="mail-heading">
-              <div>
-                <div className="eyebrow">GOOGLE MAIL · READ ONLY</div>
-                <h1>{gmail.connected ? gmail.email : 'Mail at a glance'}</h1>
-              </div>
-              <div className="mail-actions">
-                {gmail.connected ? (
-                  <>
-                    <button
-                      className="soft-button"
-                      onClick={() => window.hub.gmailRefresh()}
-                      disabled={gmail.loading}
-                    >
-                      {gmail.loading ? 'Refreshing…' : 'Refresh'}
-                    </button>
-                    <button
-                      className="soft-button"
-                      onClick={() => window.hub.gmailDisconnect()}
-                      disabled={gmail.loading}
-                    >
-                      Disconnect
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    className="soft-button"
-                    onClick={() =>
-                      window.hub
-                        .gmailConnect()
-                        .then(setGmail)
-                        .catch((e) => setGmail((s) => ({ ...s, loading: false, error: e.message })))
-                    }
-                    disabled={!gmail.configured || gmail.loading}
-                  >
-                    {gmail.loading ? 'Opening Google…' : 'Connect Google'}
-                  </button>
-                )}
-              </div>
-            </div>
-            {gmail.error && (
-              <p className="mail-error" role="alert">
-                {gmail.error}
-              </p>
-            )}
-            {!gmail.configured && (
-              <p className="mail-hint">
-                Gmail sign-in will be available when the app publisher finishes Google OAuth setup.
-              </p>
-            )}
-            {gmail.connected && gmail.messages.length === 0 && !gmail.loading && (
-              <p className="mail-hint">Your inbox is clear.</p>
-            )}
-            <div className="mail-list" aria-label="Recent inbox messages">
-              {gmail.messages.slice(0, 3).map((message) => (
-                <button
-                  key={message.id}
-                  className="mail-message"
-                  onClick={() => window.hub.gmailOpen(message.id)}
-                >
-                  <span className="mail-sender">{message.from || 'Unknown sender'}</span>
-                  <strong>{message.subject}</strong>
-                  <small>{message.snippet}</small>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
         {page === 'all' && (
           <section className="all-page">
             <div className="page-title">All apps</div>
@@ -1197,21 +1113,43 @@ function MusicPage({
   const percent = system?.duration ? Math.min(100, (position / system.duration) * 100) : progress;
   const control = (action, seconds) =>
     system ? call(() => window.hub.mediaControl(action, seconds)) : null;
+  const echoInstalled = state.system?.echoInstalled;
   return (
-    <section className="music-page">
-      <div className="album-placeholder">
-        {system?.artwork ? (
-          <img
-            className="music-art-image album-art"
-            src={system.artwork}
-            alt={`${title} cover art`}
-          />
-        ) : (
-          <Music2 size={96} />
+    <section className={`music-page${echoInstalled ? ' music-page-echo' : ''}`}>
+      <div className="music-cover-column">
+        <div className="album-placeholder">
+          {system?.artwork ? (
+            <img
+              className="music-art-image album-art"
+              src={system.artwork}
+              alt={`${title} cover art`}
+            />
+          ) : (
+            <Music2 size={96} />
+          )}
+        </div>
+        {echoInstalled && (
+          <div className="echo-actions">
+            <button className="soft-button" onClick={() => call(() => window.hub.launchEcho(true))}>
+              Open Echo Music
+            </button>
+            <button
+              className="soft-button"
+              onClick={() => call(() => window.hub.launchEcho(false))}
+            >
+              {state.system.echoVisible
+                ? 'Hide window'
+                : state.system.echoRunning
+                  ? 'Keep in tray'
+                  : 'Start in tray'}
+            </button>
+          </div>
         )}
       </div>
       <div className="music-info">
-        <div className="eyebrow">{system ? 'SYSTEM MEDIA' : 'LOCAL MUSIC'}</div>
+        <div className="eyebrow">
+          {system?.source === 'Echo Music' ? 'ECHO MUSIC' : system ? 'SYSTEM MEDIA' : 'LOCAL MUSIC'}
+        </div>
         <h1>{title}</h1>
         <p>
           {system

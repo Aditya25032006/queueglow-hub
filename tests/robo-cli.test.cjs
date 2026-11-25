@@ -14,7 +14,7 @@ test('CLI discovery accepts an executable on PATH', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'queueglow-cli-test-'));
   try {
     const executable = path.join(directory, process.platform === 'win32' ? 'codex.exe' : 'codex');
-    fs.writeFileSync(executable, 'fixture');
+    fs.writeFileSync(executable, 'fixture', { mode: 0o700 });
     const found = discoverCli({ PATH: directory });
     assert.equal(found.codex, executable);
   } finally {

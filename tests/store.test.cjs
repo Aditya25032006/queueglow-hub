@@ -18,7 +18,8 @@ function withStore(fn) {
 }
 test('local flows persist safely and reject invalid input', () =>
   withStore((store) => {
-    assert.equal(store.state().apps.length, 11);
+    assert.equal(store.state().apps.length, 10);
+    assert.equal(store.state().apps.some(({ id }) => id === 'mail'), false);
     assert.equal(store.state().settings.clipboardEnabled, false);
     store.setSetting('clipboardEnabled', true);
     assert.equal(store.setting('clipboardEnabled'), true);

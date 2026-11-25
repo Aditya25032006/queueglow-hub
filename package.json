@@ -1,6 +1,6 @@
 {
   "name": "queueglow-hub",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "author": "Kausthub Pulipati",
   "license": "MIT",
   "description": "A local Windows desktop hub for focus, files, clips, music, and coding agents",
@@ -68,6 +68,9 @@
       "artifactName": "QueueglowHub-Setup-${version}.${ext}"
     },
     "linux": {
+      "executableArgs": [
+        "--ozone-platform=x11"
+      ],
       "target": [
         {
           "target": "AppImage",

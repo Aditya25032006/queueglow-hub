@@ -32,3 +32,13 @@ The loopback updater also passed installation using a disposable 0.1.5 copy and 
 The connectivity adapter returned the connected headset name from a controlled BlueZ command fixture. The host had a powered Bluetooth adapter and no connected devices at the time of testing. PipeWire volume and GNOME brightness both accepted a write of their existing value and returned that value. The local build's Gmail client ID is empty, so Gmail sign-in still requires publisher OAuth setup.
 
 GNOME launcher integration passed. The desktop entry validated and GIO launched it while the existing service stayed active. In an isolated packaged test, a second AppImage invocation exited and expanded the existing island without creating a second renderer.
+
+A packaged run in a disposable profile started and stopped a one-minute Focus timer, added and removed an Agenda event, and accepted and removed a four-byte file through the Tray drop API. Wi-Fi and Bluetooth turned off and back on through the packaged IPC handlers against isolated NetworkManager and BlueZ command fixtures. Neither physical radio was switched during this test.
+
+Linux Connections reports that the current agent hooks require Windows. A packaged smoke test checked that both hook registration IPC routes reject the operation and leave the isolated Codex and Claude configuration paths untouched. Removal of an existing Queueglow hook remains available.
+
+The live Ubuntu radio test passed using the Linux adapter. Bluetooth and Wi-Fi each read back as off after disabling and on after restoring. Wi-Fi reassociated, both radios ended in their original enabled state, and the regular AppImage service stayed running.
+
+The GitHub-hosted update passed on the fork. A disposable packaged 0.1.5 client found release `0.1.6`, downloaded and checksum-verified the AppImage, then installed it. The installed bytes matched the published asset, the isolated autostart entry followed the new filename, and the installed app reported 0.1.6 at launch. The regular 0.1.5 service remained running.
+
+Echo Music and Queueglow were tested separately and together. The packaged Music pane displayed an Echo track and routed transport and visibility commands against a local socket fixture. A real Echo build restored two local WAVs from a disposable queue and played them without a window. Next, pause, show, hide while playing, and quit passed over the same bridge. The installed Echo Music instance reports its window hidden, and both desktop processes are active.

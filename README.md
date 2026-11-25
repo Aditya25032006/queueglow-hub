@@ -23,7 +23,6 @@ Queueglow stays out of the taskbar and is controlled from the tray menu.
 
 **Mail**
 
-- Optional Gmail sign-in using read-only inbox access; recent sender, subject, and short previews only
 
 **Productivity**
 
@@ -53,12 +52,6 @@ Queueglow stays out of the taskbar and is controlled from the tray menu.
 
 Existing portable-folder users need to run the installer once to switch to the install type that supports in-app updates; their Queueglow data stays in `%LOCALAPPDATA%\Queueglow`. After that one-time move, normal updates do not require downloading or running another setup. Windows may warn because the app is unsigned.
 
-## Gmail sign-in configuration
-
-The Mail tab uses Google's installed-app OAuth flow in the system browser and requests only `gmail.readonly`. Queueglow keeps OAuth tokens encrypted with Windows secure storage, loads up to five inbox previews, and does not download message bodies. The published Windows release workflow reads the public OAuth client ID from the `QUEUEGLOW_GOOGLE_CLIENT_ID` repository variable; the client ID is not a secret and must be set by the repository owner. Local builds can use the same environment variable.
-
-Before enabling this for public users, create a Google Cloud Desktop OAuth client, enable the Gmail API, configure the OAuth consent screen, and submit the restricted Gmail read scope for Google's verification. OAuth apps left in Testing have a 100-test-user cap and Gmail refresh tokens expire after seven days. See [Google's desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app), [Gmail scope definitions](https://developers.google.com/workspace/gmail/api/auth/scopes), and [restricted-scope verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification).
-
 ## Privacy
 
 Queueglow has no telemetry. Local data lives in `%LOCALAPPDATA%\Queueglow`.
@@ -69,7 +62,6 @@ Queueglow has no telemetry. Local data lives in `%LOCALAPPDATA%\Queueglow`.
 | Online lyrics     | Off             | Track title and artist go to [LRCLIB](https://lrclib.net/docs) once enabled; results are cached for the session |
 | Robo              | Only on submit  | Your question goes to the selected provider. An explicitly attached screen or window image is sent with it      |
 | OpenAI API key    | Optional        | Stored with Windows encryption                                                                                  |
-| Gmail             | Only on connect | OAuth requests read-only access. Up to five short inbox previews stay in memory; the token is encrypted locally |
 
 ## Build from source
 
@@ -107,7 +99,6 @@ Additional tests:
 
 - **Memory use:** The Electron build is heavier than a native utility. A full island smoke test measured about 507 MB combined working set and 304 MB private bytes on the test PC. `QUEUEGLOW_SOFTWARE_RENDER=1` lowers GPU memory but may make animation less smooth.
 - **Not implemented:** Google Calendar, microphone input, and enforced app or site blocking.
-- **Gmail setup:** The app owner must configure the public Google OAuth client ID and complete Google's restricted-scope verification before public Gmail sign-in is enabled.
 - **Untested:** Robo image attachments are implemented but have not completed a live provider test.
 
 ## Contributing
@@ -117,3 +108,9 @@ Open an issue for reproducible bugs. Include your Windows version, display scale
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+### Local Echo Music and Codex setup
+
+- Music can launch a compatible installed Echo Music build in the background and use its playback controls while its window is hidden.
+
+- On Linux, **Settings → Connections → Codex → Connect** installs activity hooks for the Codex CLI. Start a fresh CLI session, enter `/hooks`, and review and trust the Queueglow hooks. They send lifecycle labels to the local island. Codex itself handles approvals.

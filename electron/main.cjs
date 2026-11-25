@@ -23,7 +23,7 @@ const { autoUpdater } = require('electron-updater');
 const { HubStore, isProgramShortcut, shortcutExtensions } = require('./store.cjs');
 const hooks = require('./hooks.cjs');
 const { MediaBridge } = require('./media.cjs');
-const { GmailBridge } = require('./gmail.cjs');
+const { echoInstalled, launchEcho, requestEcho } = require('./echo-music.cjs');
 const { discoverCli, chooseProvider, askCli, clipAnswer } = require('./robo-cli.cjs');
 const { DURATION_MS, IDLE_SECONDS, gaze } = require('./island-motion.cjs');
 const {
@@ -34,6 +34,11 @@ const {
 const { openLinuxSettings, launchDesktopApp } = require('./linux-system.cjs');
 const { wallpaperAccent } = require('./wallpaper.cjs');
 
+// Native Wayland does not let the island position itself at the screen edge.
+const linuxX11 =
+  process.platform === 'linux' &&
+  Boolean(process.env.DISPLAY) &&
+  (app.commandLine.getSwitchValue('ozone-platform') === 'x11' || !process.env.WAYLAND_DISPLAY);
 if (process.env.QUEUEGLOW_SOFTWARE_RENDER === '1') app.disableHardwareAcceleration();
 
 const root =
@@ -45,7 +50,6 @@ let store,
   settingsWin,
   tray,
   mediaBridge,
-  gmailBridge,
   folded = true,
   targetFolded = true,
   motion = 'idle',
@@ -97,7 +101,8 @@ function resetIslandBounds() {
 
 function islandInput(fold) {
   const clickableNotch = fold && store.setting('islandExpansion') === 'click';
-  if (clickableNotch && ['win32', 'linux'].includes(process.platform)) {
+  const captureNotch = fold && (clickableNotch || linuxX11);
+  if (captureNotch && (process.platform === 'win32' || linuxX11)) {
     const area = win.getBounds();
     const zoom = win.webContents.getZoomFactor();
     const width = Math.round(FOLDED.width * zoom);
@@ -110,11 +115,16 @@ function islandInput(fold) {
       },
     ]);
     shapedNotch = true;
+  } else if (linuxX11) {
+    // An empty shape leaves the X11 window with no visible or interactive area.
+    const { width, height } = win.getBounds();
+    win.setShape([{ x: 0, y: 0, width, height }]);
+    shapedNotch = false;
   } else if (shapedNotch) {
     win.setShape([]);
     shapedNotch = false;
   }
-  const ignore = fold && !clickableNotch;
+  const ignore = fold && !captureNotch;
   win.setIgnoreMouseEvents(ignore, ignore ? { forward: true } : undefined);
 }
 
@@ -203,7 +213,8 @@ function resize(fold, snap = false) {
 }
 function pointerInsideNotch(point) {
   const rect = win.getBounds();
-  const notch = islandSize(FOLDED);
+  const zoom = win.webContents.getZoomFactor();
+  const notch = { width: FOLDED.width * zoom, height: FOLDED.height * zoom };
   return (
     point.x >= rect.x + (rect.width - notch.width) / 2 &&
     point.x < rect.x + (rect.width + notch.width) / 2 &&
@@ -391,6 +402,19 @@ function openTray() {
           resize(false);
         },
       },
+      ...(echoInstalled()
+        ? [
+            {
+              label: 'Echo Music in background',
+              click: () => launchEcho(false).catch(console.warn),
+            },
+            { label: 'Show Echo Music', click: () => launchEcho(true).catch(console.warn) },
+            { label: 'Echo Music: Play / Pause', click: () => requestEcho('playPause') },
+            { label: 'Echo Music: Previous', click: () => requestEcho('previous') },
+            { label: 'Echo Music: Next', click: () => requestEcho('next') },
+            { label: 'Quit Echo Music', click: () => requestEcho('quit') },
+          ]
+        : []),
       { label: 'Fold to eyes', click: () => resize(true) },
       { label: 'Settings', click: () => openSettingsWindow() },
       { type: 'separator' },
@@ -411,9 +435,30 @@ function canLaunchOnLogin() {
   );
 }
 
-function hookScript() {
+function nativeCodexHook(provider) {
+  return provider === 'codex' && process.platform === 'linux' && fs.existsSync('/usr/bin/python3');
+}
+
+function hookScript(provider) {
+  if (nativeCodexHook(provider)) return path.join(root, 'agent_hook.py');
   const packaged = path.join(process.resourcesPath, 'agent_hook.ps1');
   return fs.existsSync(packaged) ? packaged : path.join(__dirname, 'agent_hook.ps1');
+}
+
+function changeAgentHook(provider, action) {
+  const executable = hookScript(provider);
+  if (action === 'connect' && process.platform !== 'win32') {
+    if (!nativeCodexHook(provider)) throw new Error('Hooks are unavailable for this agent');
+    const temporary = executable + '.' + crypto.randomUUID();
+    try {
+      fs.copyFileSync(path.join(__dirname, 'agent_hook.py'), temporary, fs.constants.COPYFILE_EXCL);
+      fs.chmodSync(temporary, 0o600);
+      fs.renameSync(temporary, executable);
+    } finally {
+      fs.rmSync(temporary, { force: true });
+    }
+  }
+  return hooks.change(provider, action, executable);
 }
 
 function settingsActivity(state) {
@@ -441,7 +486,9 @@ function currentSettings() {
   const connections = Object.fromEntries(
     ['codex', 'claude'].map((provider) => {
       try {
-        return [provider, hooks.registrationStatus(provider, hookScript())];
+        const status = hooks.registrationStatus(provider, hookScript(provider));
+        if (process.platform === 'win32' || nativeCodexHook(provider)) return [provider, status];
+        return [provider, status === 'disconnected' ? 'unsupported' : 'remove-only'];
       } catch {
         return [provider, 'unavailable'];
       }
@@ -612,7 +659,7 @@ function registerSettings() {
     store.setAppVisible(id, value);
     emit();
   });
-  settings('hook', (provider, action) => hooks.change(provider, action, hookScript()));
+  settings('hook', changeAgentHook);
   settings('login', (openAtLogin) => {
     if (!canLaunchOnLogin()) throw new Error('Startup is unavailable');
     if (typeof openAtLogin !== 'boolean') throw new Error('Invalid startup preference');
@@ -674,20 +721,10 @@ function register() {
     }
   });
   ipcMain.handle('state', current);
-  const gmailHandler = (name, action) =>
-    ipcMain.handle(`gmail:${name}`, async (event) => {
-      if (event.sender !== win?.webContents) throw new Error('Invalid Gmail request');
-      return action();
-    });
-  gmailHandler('state', () => gmailBridge.state());
-  gmailHandler('connect', () => gmailBridge.connect());
-  gmailHandler('refresh', () => gmailBridge.refresh());
-  gmailHandler('disconnect', () => gmailBridge.disconnect());
-  ipcMain.handle('gmail:open', (event, id) => {
-    if (event.sender !== win?.webContents) throw new Error('Invalid Gmail request');
-    if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id))
-      throw new Error('Invalid Gmail message');
-    return shell.openExternal(`https://mail.google.com/mail/u/0/#all/${id}`);
+  ipcMain.handle('echoMusic:launch', (event, show) => {
+    if (event.sender !== win?.webContents || typeof show !== 'boolean')
+      throw new Error('Invalid Echo Music request');
+    return launchEcho(show);
   });
   ipcMain.handle('updates:state', () => updateState);
   ipcMain.handle('updates:check', async () => {
@@ -874,7 +911,7 @@ function register() {
     if (process.platform === 'linux') return openLinuxSettings(target);
     return shell.openExternal(urls[target]);
   });
-  ipcMain.handle('hooks', (_e, action, provider) => hooks.change(provider, action, hookScript()));
+  ipcMain.handle('hooks', (_e, action, provider) => changeAgentHook(provider, action));
   ipcMain.handle('decide', (_e, id, behavior) => {
     if (!['allow', 'deny'].includes(behavior) || !/^[0-9a-f-]{36}$/i.test(id))
       throw new Error('Invalid decision');
@@ -1093,22 +1130,6 @@ app.whenReady().then(async () => {
   if (!(await lockLinuxInstance())) return app.exit(0);
   fs.mkdirSync(root, { recursive: true });
   store = new HubStore(root);
-  let googleClientId = '';
-  try {
-    googleClientId = JSON.parse(
-      fs.readFileSync(path.join(__dirname, '..', 'dist', 'queueglow-google-oauth.json'), 'utf8'),
-    ).clientId;
-  } catch {}
-  gmailBridge = new GmailBridge({
-    clientId: googleClientId,
-    file: path.join(root, 'gmail-session.bin'),
-    safeStorage,
-    openExternal: (url) => shell.openExternal(url),
-    onChange: (state) => {
-      if (win && !win.isDestroyed()) win.webContents.send('gmailState', state);
-    },
-  });
-  gmailBridge.initialize().catch(() => {});
   register();
   configureUpdater();
   try {

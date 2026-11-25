@@ -12,6 +12,10 @@ const paths = () => ({
     process.env.QUEUEGLOW_CLAUDE_SETTINGS || path.join(os.homedir(), '.claude', 'settings.json'),
 });
 function hookCommand(executable, provider) {
+  if (path.basename(executable) === 'agent_hook.py') {
+    const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
+    return `/usr/bin/python3 ${quote(executable)} ${quote(path.dirname(executable))}`;
+  }
   return `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${executable}" -Provider ${provider}`;
 }
 
@@ -24,7 +28,9 @@ function isOwnedHook(item, commands) {
   );
 }
 
-function providerEvents(provider) {
+function providerEvents(provider, executable) {
+  if (path.basename(executable || '') === 'agent_hook.py')
+    return EVENTS.filter((event) => event !== 'PermissionRequest');
   return provider === 'claude' ? [...EVENTS, 'PostToolUseFailure'] : EVENTS;
 }
 
@@ -56,7 +62,7 @@ function plan(config, provider, action, executable, previouslyRegistered = []) {
   if (typeof next.hooks !== 'object' || Array.isArray(next.hooks))
     throw new Error('Invalid existing hooks');
   const command = hookCommand(executable, provider);
-  for (const event of providerEvents(provider)) {
+  for (const event of providerEvents(provider, executable)) {
     const item =
       provider === 'claude'
         ? {
@@ -90,7 +96,7 @@ function isHookScript(script) {
   return (
     typeof script === 'string' &&
     path.isAbsolute(script) &&
-    path.basename(script) === 'agent_hook.ps1' &&
+    ['agent_hook.ps1', 'agent_hook.py'].includes(path.basename(script)) &&
     !/["\r\n]/.test(script)
   );
 }
@@ -140,7 +146,7 @@ function registrationStatus(provider, executable) {
       )
     );
   }
-  const events = providerEvents(provider);
+  const events = providerEvents(provider, executable);
   if (events.every((event) => hasHook(event, current))) return 'connected';
   if (events.some((event) => hasHook(event, seen))) return 'update';
   return 'disconnected';

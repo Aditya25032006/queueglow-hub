@@ -21,6 +21,8 @@ function discoverCli(environment = process.env) {
   return Object.fromEntries(
     Object.keys(NAMES).map((provider) => {
       const candidates = directories.map((directory) => path.join(directory, provider + suffix));
+      if (process.platform === 'linux' && provider === 'codex')
+        candidates.push('/usr/lib/chatgpt/resources/codex');
       if (process.platform === 'win32' && provider === 'codex' && environment.APPDATA) {
         const arch =
           process.arch === 'arm64' ? 'aarch64-pc-windows-msvc' : 'x86_64-pc-windows-msvc';
@@ -42,6 +44,7 @@ function discoverCli(environment = process.env) {
       }
       const found = candidates.find((candidate) => {
         try {
+          fs.accessSync(candidate, fs.constants.X_OK);
           return fs.statSync(candidate).isFile();
         } catch {
           return false;

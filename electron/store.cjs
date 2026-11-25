@@ -26,7 +26,6 @@ const APP_IDS = [
   'clips',
   'note',
   'agenda',
-  'mail',
 ];
 const MODE_DEFAULTS = [
   ['work', 'Work', 50 * 60],
@@ -406,6 +405,7 @@ class HubStore {
       apps: this.db
         .prepare('SELECT app_id AS id,visible,sort_order FROM app_preferences ORDER BY sort_order')
         .all()
+        .filter((row) => APP_IDS.includes(row.id))
         .map((row) => ({ ...row, visible: !!row.visible })),
       jobs: this.db.prepare('SELECT * FROM agent_jobs ORDER BY updated_at DESC LIMIT 20').all(),
       events: this.db

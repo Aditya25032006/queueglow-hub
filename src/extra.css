@@ -1615,3 +1615,44 @@ html[data-reduce-motion='true'] .eyes span {
   padding: 6px 11px;
   font-size: 11px;
 }
+
+.music-cover-column {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  justify-content: center;
+}
+.music-cover-column .album-placeholder {
+  min-height: 0;
+}
+.echo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  padding-top: 5px;
+  flex: 0 0 auto;
+}
+.echo-actions .soft-button {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+.music-page-echo .music-info {
+  gap: 3px;
+  justify-content: flex-start;
+  overflow-y: auto;
+}
+.music-page-echo .music-info > * {
+  flex: 0 0 auto;
+}
+.music-page-echo .music-info h1,
+.music-page-echo .music-info p,
+.music-page-echo .seek,
+.music-page-echo .transport {
+  margin: 0;
+}
+.music-page-echo .transport .play-button {
+  width: 36px;
+  height: 36px;
+}

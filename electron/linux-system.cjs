@@ -1,5 +1,6 @@
 const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
+const { echoArtwork, echoInstalled, requestEcho } = require('./echo-music.cjs');
 const { getLinuxMedia, controlLinuxMedia } = require('./linux-media.cjs');
 
 const run = promisify(execFile);
@@ -24,7 +25,7 @@ const screenArgs = [
 ];
 
 async function linuxSystemState() {
-  const [audio, brightness, wifi, networks, bluetooth, devices, battery, player] =
+  const [audio, brightness, wifi, networks, bluetooth, devices, battery, player, echo] =
     await Promise.all([
       command('wpctl', ['get-volume', sink]).catch(() => ''),
       command('gdbus', [
@@ -50,6 +51,7 @@ async function linuxSystemState() {
       command('bluetoothctl', ['devices', 'Connected']).catch(() => ''),
       command('upower', ['-i', '/org/freedesktop/UPower/devices/DisplayDevice']).catch(() => ''),
       getLinuxMedia(command).catch(() => null),
+      requestEcho('state'),
     ]);
   const level = audio.match(/^Volume: (\d+(?:\.\d+)?)/)?.[1];
   const backlight = Number(brightness.match(/<(\d+)>/)?.[1]);
@@ -61,7 +63,9 @@ async function linuxSystemState() {
   const charge = battery.match(/^\s*percentage:\s*(\d+)%/m)?.[1];
   const powered = bluetooth.match(/Powered: (yes|no)/)?.[1];
   return {
-    media: player?.media || null,
+    media: echo?.title
+      ? { ...echo, artwork: echoArtwork(echo.artwork), source: 'Echo Music', platform: 'linux' }
+      : player?.media || null,
     volume:
       level == null
         ? null
@@ -69,6 +73,9 @@ async function linuxSystemState() {
           ? 0
           : Math.min(100, Math.round(Number(level) * 100)),
     system: {
+      echoInstalled: Boolean(echo) || echoInstalled(),
+      echoRunning: Boolean(echo),
+      echoVisible: Boolean(echo?.visible),
       batteryPercent: charge == null ? null : Number(charge),
       charging: /^\s*state:\s*(charging|fully-charged)\s*$/m.test(battery),
       brightnessPercent: backlight >= 0 && backlight <= 100 ? backlight : null,
@@ -114,8 +121,15 @@ async function linuxSystemRequest(action, value, options) {
       }
       break;
     }
-    default:
-      await controlLinuxMedia(command, action, value);
+    default: {
+      const echo = await requestEcho('state');
+      if (echo?.title) {
+        const request = action === 'seek' ? `seek ${Math.round(value * 1000)}` : action;
+        if (!(await requestEcho(request))) throw new Error('Echo Music did not accept the command');
+      } else {
+        await controlLinuxMedia(command, action, value);
+      }
+    }
   }
   return linuxSystemState();
 }
