@@ -42,3 +42,5 @@ The live Ubuntu radio test passed using the Linux adapter. Bluetooth and Wi-Fi e
 The GitHub-hosted update passed on the fork. A disposable packaged 0.1.5 client found release `0.1.6`, downloaded and checksum-verified the AppImage, then installed it. The installed bytes matched the published asset, the isolated autostart entry followed the new filename, and the installed app reported 0.1.6 at launch. The regular 0.1.5 service remained running.
 
 Echo Music and Queueglow were tested separately and together. The packaged Music pane displayed an Echo track and routed transport and visibility commands against a local socket fixture. A real Echo build restored two local WAVs from a disposable queue and played them without a window. Next, pause, show, hide while playing, and quit passed over the same bridge. The installed Echo Music instance reports its window hidden, and both desktop processes are active.
+
+Release 0.1.8 marks both the island and Settings as Linux X11 utility windows. GNOME set `SKIP_TASKBAR` and `SKIP_PAGER` on both visible windows. The packaged island expanded and Settings remained usable.

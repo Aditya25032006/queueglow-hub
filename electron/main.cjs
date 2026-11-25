@@ -352,6 +352,8 @@ function openWindow() {
     resizable: false,
     maximizable: false,
     skipTaskbar: true,
+    // Mutter excludes utility windows from its taskbar and app switcher.
+    ...(linuxX11 ? { type: 'utility' } : {}),
     alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -536,6 +538,8 @@ function openSettingsWindow(section = 'home') {
   }
   const next = new BrowserWindow({
     title: 'Queueglow Settings',
+    skipTaskbar: true,
+    ...(linuxX11 ? { type: 'utility' } : {}),
     width: 940,
     height: 710,
     minWidth: 620,
