@@ -926,19 +926,31 @@ function updaterErrorMessage(error) {
 
 function configureUpdater() {
   const metadata = path.join(process.resourcesPath, 'app-update.yml');
-  const supported = process.platform === 'win32' && app.isPackaged && fs.existsSync(metadata);
+  const linuxAppImage = process.platform === 'linux' && Boolean(process.env.APPIMAGE);
+  const supported =
+    (process.platform === 'win32' || linuxAppImage) && app.isPackaged && fs.existsSync(metadata);
   updateState = {
     supported,
     status: 'idle',
+    manualDownload: linuxAppImage,
     version: app.getVersion(),
     message: supported
       ? ''
-      : 'In-app updates are available after installing Queueglow for Windows.',
+      : 'In-app updates require the Windows installer or Linux AppImage release.',
   };
   if (!supported) return;
 
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoDownload = !linuxAppImage;
+  autoUpdater.autoInstallOnAppQuit = !linuxAppImage;
+  if (linuxAppImage) {
+    autoUpdater.on('appimage-filename-updated', (destination) => {
+      try {
+        if (linuxLaunchOnLogin(process.env.APPIMAGE)) setLinuxLaunchOnLogin(true, destination);
+      } catch (error) {
+        console.warn('Could not update the launch-on-login entry:', error.message);
+      }
+    });
+  }
   autoUpdater.on('checking-for-update', () => {
     updateState = { ...updateState, status: 'checking', message: 'Checking for updates…' };
     sendUpdateState();
@@ -947,9 +959,11 @@ function configureUpdater() {
     updateState = {
       ...updateState,
       version: info.version,
-      status: 'downloading',
+      status: linuxAppImage ? 'available' : 'downloading',
       percent: 0,
-      message: `Downloading version ${info.version} in the background.`,
+      message: linuxAppImage
+        ? `Version ${info.version} is available to download.`
+        : `Downloading version ${info.version} in the background.`,
     };
     sendUpdateState();
   });
@@ -977,7 +991,9 @@ function configureUpdater() {
       status: 'downloaded',
       version: info.version,
       percent: 100,
-      message: `Version ${info.version} is ready. It will install when you next quit Queueglow.`,
+      message: linuxAppImage
+        ? `Version ${info.version} is ready. Restart to install it.`
+        : `Version ${info.version} is ready. It will install when you next quit Queueglow.`,
     };
     sendUpdateState();
   });
@@ -1076,7 +1092,7 @@ app.whenReady().then(() => {
   openTray();
   if (store.setting('wallpaperSync')) refreshWallpaperColor();
   setInterval(refreshWallpaperColor, 10 * 60 * 1000);
-  if (updateState.supported) {
+  if (updateState.supported && !updateState.manualDownload) {
     setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 12000);
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
   }

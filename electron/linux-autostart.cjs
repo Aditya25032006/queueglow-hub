@@ -7,8 +7,23 @@ function entryPath() {
   return path.join(config, 'autostart', 'com.kausthub.queueglowhub.desktop');
 }
 
-function linuxLaunchOnLogin() {
-  return fs.existsSync(entryPath());
+function desktopExec(executable) {
+  if (!path.isAbsolute(executable) || /[\x00-\x1f\x7f]/.test(executable))
+    throw new Error('Invalid AppImage location');
+  // Escape the Exec argument, then escape backslashes for the desktop file parser.
+  const argument = executable
+    .replace(/["`$\\]/g, '\\$&')
+    .replace(/%/g, '%%')
+    .replace(/\\/g, '\\\\');
+  return `Exec="${argument}"`;
+}
+
+function linuxLaunchOnLogin(executable) {
+  if (!fs.existsSync(entryPath())) return false;
+  return (
+    !executable ||
+    fs.readFileSync(entryPath(), 'utf8').split('\n').includes(desktopExec(executable))
+  );
 }
 
 function setLinuxLaunchOnLogin(enabled, executable) {
@@ -17,13 +32,6 @@ function setLinuxLaunchOnLogin(enabled, executable) {
     fs.rmSync(entry, { force: true });
     return;
   }
-  if (!path.isAbsolute(executable) || /[\x00-\x1f\x7f]/.test(executable))
-    throw new Error('Invalid AppImage location');
-  // Escape the Exec argument, then escape backslashes for the desktop file parser.
-  const argument = executable
-    .replace(/["`$\\]/g, '\\$&')
-    .replace(/%/g, '%%')
-    .replace(/\\/g, '\\\\');
   fs.mkdirSync(path.dirname(entry), { recursive: true });
   fs.writeFileSync(
     entry,
@@ -31,7 +39,7 @@ function setLinuxLaunchOnLogin(enabled, executable) {
       '[Desktop Entry]',
       'Type=Application',
       'Name=Queueglow Hub',
-      `Exec="${argument}"`,
+      desktopExec(executable),
       'Terminal=false',
       '',
     ].join('\n'),
