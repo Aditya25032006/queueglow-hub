@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { setTimeout: delay } = require('node:timers/promises');
 const { autoUpdater } = require('electron-updater');
 const { HubStore, isProgramShortcut, shortcutExtensions } = require('./store.cjs');
 const hooks = require('./hooks.cjs');
@@ -25,7 +26,11 @@ const { MediaBridge } = require('./media.cjs');
 const { GmailBridge } = require('./gmail.cjs');
 const { discoverCli, chooseProvider, askCli, clipAnswer } = require('./robo-cli.cjs');
 const { DURATION_MS, IDLE_SECONDS, gaze } = require('./island-motion.cjs');
-const { linuxLaunchOnLogin, setLinuxLaunchOnLogin } = require('./linux-autostart.cjs');
+const {
+  linuxLaunchOnLogin,
+  setLinuxLaunchOnLogin,
+  updateLinuxApplicationEntry,
+} = require('./linux-autostart.cjs');
 const { openLinuxSettings, launchDesktopApp } = require('./linux-system.cjs');
 const { wallpaperAccent } = require('./wallpaper.cjs');
 
@@ -946,8 +951,9 @@ function configureUpdater() {
     autoUpdater.on('appimage-filename-updated', (destination) => {
       try {
         if (linuxLaunchOnLogin(process.env.APPIMAGE)) setLinuxLaunchOnLogin(true, destination);
+        updateLinuxApplicationEntry(process.env.APPIMAGE, destination);
       } catch (error) {
-        console.warn('Could not update the launch-on-login entry:', error.message);
+        console.warn('Could not update the desktop launch entries:', error.message);
       }
     });
   }
@@ -1062,7 +1068,29 @@ async function askRoboOpenAI(prompt, screenshot) {
       .join('\n'),
   );
 }
-app.whenReady().then(() => {
+async function lockLinuxInstance() {
+  if (process.platform !== 'linux' || !app.isPackaged) return true;
+  let locked = app.requestSingleInstanceLock();
+  // electron-updater can spawn the replacement before the original process exits.
+  if (process.env.APPIMAGE_SILENT_INSTALL === 'true') {
+    for (let attempt = 0; !locked && attempt < 20; attempt++) {
+      await delay(150);
+      locked = app.requestSingleInstanceLock();
+    }
+  }
+  if (locked) {
+    app.on('second-instance', () => {
+      if (quitting || !win || win.isDestroyed()) return;
+      win.show();
+      resize(false);
+      win.focus();
+    });
+  }
+  return locked;
+}
+
+app.whenReady().then(async () => {
+  if (!(await lockLinuxInstance())) return app.exit(0);
   fs.mkdirSync(root, { recursive: true });
   store = new HubStore(root);
   let googleClientId = '';

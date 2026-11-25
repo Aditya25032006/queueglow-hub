@@ -30,3 +30,5 @@ AppImage update verification passed in two parts. The executable from the normal
 The loopback updater also passed installation using a disposable 0.1.5 copy and a separately built 0.1.6 AppImage. The installed bytes matched the 0.1.6 build, the isolated launch-on-login entry followed the renamed artifact, and launching that artifact reported version 0.1.6. The fixture's HTTP server does not implement Range requests, so the updater used a full download. A GitHub-hosted Linux release remains untested.
 
 The connectivity adapter returned the connected headset name from a controlled BlueZ command fixture. The host had a powered Bluetooth adapter and no connected devices at the time of testing. PipeWire volume and GNOME brightness both accepted a write of their existing value and returned that value. The local build's Gmail client ID is empty, so Gmail sign-in still requires publisher OAuth setup.
+
+GNOME launcher integration passed. The desktop entry validated and GIO launched it while the existing service stayed active. In an isolated packaged test, a second AppImage invocation exited and expanded the existing island without creating a second renderer.

@@ -46,4 +46,16 @@ function setLinuxLaunchOnLogin(enabled, executable) {
   );
 }
 
-module.exports = { linuxLaunchOnLogin, setLinuxLaunchOnLogin };
+function updateLinuxApplicationEntry(previous, destination) {
+  const data = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
+  const entry = path.join(data, 'applications', 'com.kausthub.queueglowhub.desktop');
+  if (!fs.existsSync(entry)) return;
+  const original = desktopExec(previous);
+  const lines = fs.readFileSync(entry, 'utf8').split('\n');
+  const index = lines.indexOf(original);
+  if (index === -1) return;
+  lines[index] = desktopExec(destination);
+  fs.writeFileSync(entry, lines.join('\n'));
+}
+
+module.exports = { linuxLaunchOnLogin, setLinuxLaunchOnLogin, updateLinuxApplicationEntry };
